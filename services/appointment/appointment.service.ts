@@ -17,7 +17,7 @@ import {
   createAppointmentRecord,
   findAppointmentById,
   replaceAppointmentRecord,
-} from "../../repositories/appointment.repository.js";
+} from "../../models/appointment.repository.js";
 import {
   applyScheduleResult,
   appendHistory,

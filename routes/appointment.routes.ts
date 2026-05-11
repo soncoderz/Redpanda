@@ -17,7 +17,6 @@ export function createAppointmentRoutes() {
   router.get("/", listAppointments);
   router.get("/:id", getAppointment);
   router.patch("/:id", updateAppointment);
-  router.put("/:id", updateAppointment);
   router.delete("/:id", cancelAppointment);
 
   return router;

@@ -1,5 +1,5 @@
-import { EventLogModel } from "../models/event-log.schema.js";
-import type { AppointmentEventEnvelope } from "../models/appointment.model.js";
+import { EventLogModel } from "./event-log.schema.js";
+import type { AppointmentEventEnvelope } from "./appointment.model.js";
 
 export async function recordProcessedEvent(event: AppointmentEventEnvelope) {
   try {

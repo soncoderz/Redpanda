@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:19070/deployments\" -UseBasicParsing -TimeoutSec 3; $r.Content } catch { \"Admin API error: $\\($_.Exception.Message\\)\" })"
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:19070/deployments\" -UseBasicParsing -TimeoutSec 3; $r.Content } catch { \"Admin API error: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(Remove-Item \"d:\\\\Thuc Tap\\\\Nodejs\\\\redpanda\\\\repositories\" -Recurse -Confirm:$false)"
     ]
   }
 }

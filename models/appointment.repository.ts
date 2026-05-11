@@ -1,9 +1,9 @@
-import { AppointmentModel, type AppointmentRecord } from "../models/appointment.schema.js";
+import { AppointmentModel, type AppointmentRecord } from "./appointment.schema.js";
 import {
   AppointmentState,
   type AppointmentPatchInput,
   type AppointmentState as AppointmentStateType,
-} from "../models/appointment.model.js";
+} from "./appointment.model.js";
 
 export class AppointmentRepositoryError extends Error {
   constructor(

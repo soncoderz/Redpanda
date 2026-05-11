@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import { env } from "../config/env.js";
 import { AppointmentEventEnvelope } from "../models/appointment.model.js";
-import { recordProcessedEvent } from "../repositories/event-log.repository.js";
+import { recordProcessedEvent } from "../models/event-log.repository.js";
 import {
   createKafkaConsumer,
   subscribeToAppointmentEvents,

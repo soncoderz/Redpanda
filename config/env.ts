@@ -62,6 +62,11 @@ export const env = {
     "KAFKA_TOPIC_REPLICATION_FACTOR",
     1,
   ),
+  kafkaTelegramGroupId:
+    process.env.KAFKA_TELEGRAM_GROUP_ID ?? "appointment-telegram",
+
+  telegramBotToken: emptyToUndefined(process.env.TELEGRAM_BOT_TOKEN),
+  telegramChatId: emptyToUndefined(process.env.TELEGRAM_CHAT_ID),
 };
 
 env.publicRestateEndpoint =
