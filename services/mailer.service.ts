@@ -1,17 +1,15 @@
-// import sgMail from "@sendgrid/mail";
-import { setTimeout as sleep } from "node:timers/promises";
+import sgMail from "@sendgrid/mail";
+
 import type { AppointmentEmailPayload } from "../models/appointment.model.js";
+import { env } from "../config/env.js";
+import { logger } from "../utils/logger.js";
 
-const MAILS_PER_REMINDER = 1;
-const MAIL_SEND_INTERVAL_MS = 10;
-
-// const sendGridApiKey = process.env.SENDGRID_API_KEY;
-// const mailFromEmail = process.env.SENDGRID_FROM_EMAIL ?? process.env.MAIL_FROM;
-// const mailFromName = process.env.SENDGRID_FROM_NAME ?? "Restate Appointment";
-
-// if (sendGridApiKey) {
-//   sgMail.setApiKey(sendGridApiKey);
-// }
+if (env.sendgridApiKey) {
+  sgMail.setApiKey(env.sendgridApiKey);
+  logger.info("SendGrid API key configured — emails will be sent");
+} else {
+  logger.warn("SENDGRID_API_KEY not set — emails will be mocked");
+}
 
 export type EmailSendResult =
   | { sent: true }
@@ -27,15 +25,15 @@ export async function sendAppointmentBeforeEmail(
 ) {
   return sendAppointmentEmail({
     to: appointment.customerEmail,
-    subject: `Nhac lich truoc 1 phut: ${appointment.service}`,
+    subject: `Nhắc lịch hẹn: ${appointment.service}`,
     text: [
-      `Xin chao ${appointment.customerName},`,
+      `Xin chào ${appointment.customerName},`,
       "",
-      "Con 1 phut nua den lich hen cua ban.",
-      `Ma lich: ${appointment.id}`,
-      `Dich vu: ${appointment.service}`,
-      `Thoi gian: ${appointment.startAt}`,
-      appointment.note ? `Ghi chu: ${appointment.note}` : undefined,
+      "Lịch hẹn của bạn sắp bắt đầu.",
+      `Mã lịch hẹn: ${appointment.id}`,
+      `Dịch vụ: ${appointment.service}`,
+      `Thời gian: ${appointment.startAt}`,
+      appointment.note ? `Ghi chú: ${appointment.note}` : undefined,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -47,15 +45,15 @@ export async function sendAppointmentAtTimeEmail(
 ) {
   return sendAppointmentEmail({
     to: appointment.customerEmail,
-    subject: `Den gio hen: ${appointment.service}`,
+    subject: `Đến giờ hẹn: ${appointment.service}`,
     text: [
-      `Xin chao ${appointment.customerName},`,
+      `Xin chào ${appointment.customerName},`,
       "",
-      "Da den gio lich hen cua ban.",
-      `Ma lich: ${appointment.id}`,
-      `Dich vu: ${appointment.service}`,
-      `Thoi gian: ${appointment.startAt}`,
-      appointment.note ? `Ghi chu: ${appointment.note}` : undefined,
+      "Đã đến giờ hẹn của bạn.",
+      `Mã lịch hẹn: ${appointment.id}`,
+      `Dịch vụ: ${appointment.service}`,
+      `Thời gian: ${appointment.startAt}`,
+      appointment.note ? `Ghi chú: ${appointment.note}` : undefined,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -67,15 +65,15 @@ export async function sendAppointmentAfterEmail(
 ) {
   return sendAppointmentEmail({
     to: appointment.customerEmail,
-    subject: `Sau gio hen 1 phut: ${appointment.service}`,
+    subject: `Theo dõi sau hẹn: ${appointment.service}`,
     text: [
-      `Xin chao ${appointment.customerName},`,
+      `Xin chào ${appointment.customerName},`,
       "",
-      "Lich hen cua ban da qua 1 phut.",
-      `Ma lich: ${appointment.id}`,
-      `Dich vu: ${appointment.service}`,
-      `Thoi gian: ${appointment.startAt}`,
-      appointment.note ? `Ghi chu: ${appointment.note}` : undefined,
+      "Lịch hẹn của bạn đã qua giờ.",
+      `Mã lịch hẹn: ${appointment.id}`,
+      `Dịch vụ: ${appointment.service}`,
+      `Thời gian: ${appointment.startAt}`,
+      appointment.note ? `Ghi chú: ${appointment.note}` : undefined,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -87,90 +85,52 @@ async function sendAppointmentEmail(message: {
   subject: string;
   text: string;
 }): Promise<EmailSendResult> {
-  for (let index = 1; index <= MAILS_PER_REMINDER; index += 1) {
-    console.info("Mock appointment email sent", {
-      index,
-      total: MAILS_PER_REMINDER,
+  if (!env.sendgridApiKey) {
+    logger.info(
+      { to: message.to, subject: message.subject },
+      "Mock email sent (no SENDGRID_API_KEY)",
+    );
+    return { sent: true };
+  }
+
+  if (!env.sendgridFromEmail) {
+    return { sent: false, reason: "SENDGRID_FROM_EMAIL not configured" };
+  }
+
+  try {
+    const [response] = await sgMail.send({
       to: message.to,
+      from: {
+        email: env.sendgridFromEmail,
+        name: env.sendgridFromName,
+      },
       subject: message.subject,
       text: message.text,
     });
 
-    if (index < MAILS_PER_REMINDER) {
-      await sleep(MAIL_SEND_INTERVAL_MS);
+    logger.info(
+      { to: message.to, subject: message.subject, statusCode: response.statusCode },
+      "Email sent via SendGrid",
+    );
+    return { sent: true };
+  } catch (error: any) {
+    const statusCode = error?.code;
+    const responseBody = error?.response?.body;
+
+    logger.error(
+      { to: message.to, statusCode, responseBody },
+      "SendGrid email failed",
+    );
+
+    if (statusCode === 401 || statusCode === 403) {
+      return {
+        sent: false,
+        reason: "SendGrid authentication failed",
+        statusCode,
+        responseBody,
+      };
     }
+
+    throw error;
   }
-
-  return { sent: true };
-
-  // Code cu gui SendGrid, tam comment de chi log ra console.
-  // if (!sendGridApiKey || !mailFromEmail) {
-  //   console.info("SendGrid env is missing; email skipped", {
-  //     to: message.to,
-  //     subject: message.subject,
-  //     hasApiKey: Boolean(sendGridApiKey),
-  //     hasFromEmail: Boolean(mailFromEmail),
-  //   });
-  //   return {
-  //     sent: false,
-  //     reason: "SendGrid env is missing",
-  //   };
-  // }
-
-  // try {
-  //   await sgMail.send({
-  //     from: {
-  //       email: mailFromEmail,
-  //       name: mailFromName,
-  //     },
-  //     ...message,
-  //   });
-  // } catch (error) {
-  //   const sendGridError = toSendGridError(error);
-  //   console.error("SendGrid email failed", {
-  //     to: message.to,
-  //     subject: message.subject,
-  //     statusCode: sendGridError.statusCode,
-  //     response: sendGridError.responseBody,
-  //   });
-
-  //   if (sendGridError.statusCode === 401 || sendGridError.statusCode === 403) {
-  //     return {
-  //       sent: false,
-  //       reason: "SendGrid authentication failed",
-  //       statusCode: sendGridError.statusCode,
-  //       responseBody: sendGridError.responseBody,
-  //     };
-  //   }
-
-  //   throw error;
-  // }
-
-  // console.info("SendGrid email sent", {
-  //   to: message.to,
-  //   subject: message.subject,
-  // });
-  // return { sent: true };
 }
-
-// function toSendGridError(error: unknown) {
-//   if (typeof error === "object" && error !== null) {
-//     const candidate = error as {
-//       code?: number;
-//       response?: {
-//         statusCode?: number;
-//         body?: unknown;
-//       };
-//     };
-
-//     return {
-//       statusCode: candidate.code ?? candidate.response?.statusCode,
-//       responseBody: candidate.response?.body,
-//     };
-//   }
-
-//   return {
-//     statusCode: undefined,
-//     responseBody: undefined,
-//   };
-// }

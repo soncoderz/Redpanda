@@ -1,0 +1,317 @@
+{
+  "info": {
+    "name": "Redpanda Appointment API",
+    "description": "Restate + Hono + BullMQ appointment backend with email reminders via SendGrid",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9080",
+      "type": "string"
+    },
+    {
+      "key": "appointmentId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Info",
+      "item": [
+        {
+          "name": "Root Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            },
+            "description": "Returns API overview with available endpoints"
+          }
+        },
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Returns health status including MongoDB, Kafka, Restate connectivity"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "item": [
+        {
+          "name": "Create Appointment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('appointmentId', body.id);",
+                  "    pm.test('Appointment created', function () {",
+                  "        pm.expect(body.id).to.be.a('string');",
+                  "        pm.expect(body.status).to.eql('booked');",
+                  "        pm.expect(body.version).to.eql(1);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Nguyen Van A\",\n  \"customerEmail\": \"nguyenvana@example.com\",\n  \"service\": \"Hair Cut\",\n  \"startAt\": \"{{$isoTimestamp}}\",\n  \"note\": \"First visit\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments"]
+            },
+            "description": "Create a new appointment. Auto-saves the appointment ID for subsequent requests."
+          }
+        },
+        {
+          "name": "Create Appointment (with Idempotency-Key)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('appointmentId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "unique-key-{{$timestamp}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Tran Thi B\",\n  \"customerEmail\": \"tranthib@example.com\",\n  \"service\": \"Nail Art\",\n  \"startAt\": \"{{$isoTimestamp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments"]
+            },
+            "description": "Create with Idempotency-Key header to prevent duplicates. Same key = same appointment."
+          }
+        },
+        {
+          "name": "Create Appointment (with custom ID)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('appointmentId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"apt-test-001\",\n  \"customerName\": \"Le Van C\",\n  \"customerEmail\": \"levanc@example.com\",\n  \"service\": \"Massage\",\n  \"startAt\": \"{{$isoTimestamp}}\",\n  \"note\": \"60 minute session\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments"]
+            },
+            "description": "Create with a custom appointment ID provided in the body."
+          }
+        },
+        {
+          "name": "List Appointments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Max results (1-100, default 50)"
+                },
+                {
+                  "key": "status",
+                  "value": "booked",
+                  "description": "Filter by status: booked | cancelled",
+                  "disabled": true
+                },
+                {
+                  "key": "customerEmail",
+                  "value": "nguyenvana@example.com",
+                  "description": "Filter by customer email",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List appointments from MongoDB. Enable query params to filter."
+          }
+        },
+        {
+          "name": "Get Appointment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments", "{{appointmentId}}"]
+            },
+            "description": "Get a single appointment by ID from Restate state (includes emailStatus, history, reminderInvocations)."
+          }
+        },
+        {
+          "name": "Update Appointment (PATCH - partial)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Updated note\",\n  \"service\": \"Hair Cut + Wash\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments", "{{appointmentId}}"]
+            },
+            "description": "Partial update — send only the fields you want to change. Increments version and reschedules reminder emails."
+          }
+        },
+        {
+          "name": "Update Appointment (PUT - full)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Nguyen Van A\",\n  \"customerEmail\": \"nguyenvana@example.com\",\n  \"service\": \"Hair Cut + Wash\",\n  \"startAt\": \"{{$isoTimestamp}}\",\n  \"note\": \"Changed time and service\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments", "{{appointmentId}}"]
+            },
+            "description": "Full update — same handler as PATCH. Increments version and reschedules reminder emails."
+          }
+        },
+        {
+          "name": "Cancel Appointment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments", "{{appointmentId}}"]
+            },
+            "description": "Cancel an appointment. Cancels all pending reminder emails."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Realtime Events (SSE)",
+      "item": [
+        {
+          "name": "Stream Appointment Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/appointments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "appointments"]
+            },
+            "description": "Server-Sent Events stream for real-time appointment updates. Events: appointment.created, appointment.updated, appointment.cancelled, reminder.sent. Open in browser or use 'curl -N' for best experience."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Queue Dashboard (Browser)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/queues",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "queues"]
+            },
+            "description": "Bull Board dashboard — open in browser to view email queue jobs, status, retries."
+          }
+        }
+      ]
+    }
+  ]
+}

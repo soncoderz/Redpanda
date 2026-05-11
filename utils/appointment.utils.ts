@@ -1,40 +1,46 @@
-import type * as restate from "@restatedev/restate-sdk";
+import { createHash } from "node:crypto";
+
+import { env } from "../config/env.js";
 import type {
-  AppointmentState,
   AppointmentEmailPayload,
+  AppointmentEventEnvelope,
+  AppointmentEventType,
+  AppointmentHistoryEntry,
+  AppointmentState,
+  ReminderType,
 } from "../models/appointment.model.js";
 
-type ReminderType = "before" | "atTime" | "after";
-
-export const STATE_KEY = "appointment";
-export const ONE_MINUTE_MS = 60_000;
+export const WORKFLOW_STATE_KEY = "appointment-workflow";
 export const REMINDER_TYPES: ReminderType[] = ["before", "atTime", "after"];
 
-export function emptyScheduleResult(version: number) {
+export interface WorkflowState {
+  id: string;
+  version: number;
+  status: AppointmentState["status"];
+  updatedAt: string;
+}
+
+export interface ReminderScheduleResult {
+  reminders: AppointmentState["reminders"];
+  events: AppointmentHistoryEntry[];
+}
+
+export function appointmentIdFromIdempotencyKey(idempotencyKey: string) {
+  const digest = createHash("sha256").update(idempotencyKey).digest("hex");
+  return `appt_${digest.slice(0, 32)}`;
+}
+
+export function emptyReminderStatus(
+  version: number,
+): AppointmentState["reminders"] {
   return {
-    reminderInvocations: emptyReminderInvocations(),
-    emailStatus: emptyEmailStatus(version),
-    events: [] as AppointmentState["history"],
+    before: emptyReminderDeliveryStatus(version),
+    atTime: emptyReminderDeliveryStatus(version),
+    after: emptyReminderDeliveryStatus(version),
   };
 }
 
-export function emptyReminderInvocations() {
-  return {
-    before: "",
-    atTime: "",
-    after: "",
-  };
-}
-
-export function emptyEmailStatus(version: number): AppointmentState["emailStatus"] {
-  return {
-    before: emptyEmailDeliveryStatus(version),
-    atTime: emptyEmailDeliveryStatus(version),
-    after: emptyEmailDeliveryStatus(version),
-  };
-}
-
-export function emptyEmailDeliveryStatus(version: number) {
+export function emptyReminderDeliveryStatus(version: number) {
   return {
     version,
     sent: false,
@@ -44,45 +50,14 @@ export function emptyEmailDeliveryStatus(version: number) {
 
 export function appendHistory(
   appointment: AppointmentState,
-  event: Omit<AppointmentState["history"][number], "version">,
+  event: Omit<AppointmentHistoryEntry, "version">,
 ) {
   appointment.history.push({
     ...event,
     version: appointment.version,
   });
+
   return appointment;
-}
-
-export function applyScheduleResult(
-  appointment: AppointmentState,
-  scheduleResult: ReturnType<typeof emptyScheduleResult>,
-) {
-  appointment.reminderInvocations = scheduleResult.reminderInvocations;
-  appointment.emailStatus = scheduleResult.emailStatus;
-  appointment.history.push(...scheduleResult.events);
-}
-
-export function normalizeAppointment(appointment: AppointmentState) {
-  const version = appointment.version ?? 1;
-  return {
-    ...appointment,
-    version,
-    reminderInvocations: appointment.reminderInvocations ?? emptyReminderInvocations(),
-    emailStatus: appointment.emailStatus ?? emptyEmailStatus(version),
-    history: appointment.history ?? [],
-  };
-}
-
-export function toEmailPayload(appointment: AppointmentState): AppointmentEmailPayload {
-  return {
-    id: appointment.id,
-    version: appointment.version,
-    customerName: appointment.customerName,
-    customerEmail: appointment.customerEmail,
-    service: appointment.service,
-    startAt: appointment.startAt,
-    note: appointment.note,
-  };
 }
 
 export function appointmentSnapshot(appointment: AppointmentState) {
@@ -97,56 +72,70 @@ export function appointmentSnapshot(appointment: AppointmentState) {
     status: appointment.status,
     createdAt: appointment.createdAt,
     updatedAt: appointment.updatedAt,
-    arrivedAt: appointment.arrivedAt,
+    cancelledAt: appointment.cancelledAt,
   };
 }
 
-export function saveStaleEmailSkipped(
-  ctx: restate.ObjectContext,
+export function toEmailPayload(
   appointment: AppointmentState,
-  reminder: ReminderType,
-  now: string,
-  reason: string,
-) {
-  appointment.history.push({
-    type: "email_skipped",
-    at: now,
+): AppointmentEmailPayload {
+  return {
+    id: appointment.id,
     version: appointment.version,
-    reminder,
-    details: { reason },
-  });
-  appointment.updatedAt = now;
+    customerName: appointment.customerName,
+    customerEmail: appointment.customerEmail,
+    service: appointment.service,
+    startAt: appointment.startAt,
+    note: appointment.note,
+  };
+}
 
-  ctx.set(STATE_KEY, appointment);
+export function toWorkflowState(appointment: AppointmentState): WorkflowState {
+  return {
+    id: appointment.id,
+    version: appointment.version,
+    status: appointment.status,
+    updatedAt: appointment.updatedAt,
+  };
+}
+
+export function applyScheduleResult(
+  appointment: AppointmentState,
+  scheduleResult: ReminderScheduleResult,
+) {
+  appointment.reminders = scheduleResult.reminders;
+  appointment.history.push(...scheduleResult.events);
   return appointment;
 }
 
-export function saveEmailSkipped(
-  ctx: restate.ObjectContext,
+export function markPendingRemindersCancelled(
   appointment: AppointmentState,
-  reminder: ReminderType,
   now: string,
   reason: string,
-  details: Record<string, unknown> = {},
 ) {
-  appointment.emailStatus[reminder] = {
-    ...appointment.emailStatus[reminder],
-    sent: false,
-    scheduled: false,
-    skippedAt: now,
-    error: reason,
-  };
-  appointment.history.push({
-    type: "email_skipped",
-    at: now,
-    version: appointment.version,
-    reminder,
-    invocationId: appointment.emailStatus[reminder].invocationId,
-    details: { reason, ...details },
-  });
-  appointment.updatedAt = now;
+  for (const reminder of REMINDER_TYPES) {
+    const status = appointment.reminders[reminder];
+    if (!status.scheduled || status.sent) {
+      continue;
+    }
 
-  ctx.set(STATE_KEY, appointment);
+    appointment.reminders[reminder] = {
+      ...status,
+      version: appointment.version,
+      scheduled: false,
+      canceledAt: now,
+      error: reason,
+    };
+    appointment.history.push({
+      type: "reminder_cancelled",
+      at: now,
+      version: appointment.version,
+      reminder,
+      jobId: status.jobId,
+      details: { reason },
+    });
+  }
+
   return appointment;
 }
 
@@ -154,11 +143,11 @@ export function reminderTargetMs(reminder: ReminderType, startAt: string) {
   const startMs = new Date(startAt).getTime();
   switch (reminder) {
     case "before":
-      return startMs - ONE_MINUTE_MS;
+      return startMs - env.reminderBeforeMs;
     case "atTime":
       return startMs;
     case "after":
-      return startMs + ONE_MINUTE_MS;
+      return startMs + env.reminderAfterMs;
   }
 }
 
@@ -168,4 +157,43 @@ export function delayUntil(targetMs: number, nowMs: number) {
 
 export function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function buildAppointmentEvent(input: {
+  type: AppointmentEventType;
+  appointment: AppointmentState;
+  occurredAt: string;
+  payload?: Record<string, unknown>;
+}): AppointmentEventEnvelope {
+  return {
+    eventId: `${input.type}:${input.appointment.id}:${input.appointment.version}`,
+    type: input.type,
+    appointmentId: input.appointment.id,
+    version: input.appointment.version,
+    occurredAt: input.occurredAt,
+    payload: {
+      appointment: appointmentSnapshot(input.appointment),
+      ...input.payload,
+    },
+  };
+}
+
+export function buildReminderSentEvent(input: {
+  appointment: AppointmentState;
+  reminder: ReminderType;
+  occurredAt: string;
+  jobId: string;
+}): AppointmentEventEnvelope {
+  return {
+    eventId: `reminder.sent:${input.appointment.id}:${input.appointment.version}:${input.reminder}`,
+    type: "reminder.sent",
+    appointmentId: input.appointment.id,
+    version: input.appointment.version,
+    occurredAt: input.occurredAt,
+    payload: {
+      appointment: appointmentSnapshot(input.appointment),
+      reminder: input.reminder,
+      jobId: input.jobId,
+    },
+  };
 }

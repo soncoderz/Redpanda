@@ -3,13 +3,74 @@ import { serve } from "@hono/node-server";
 
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
+import {
+  connectKafkaProducer,
+  disconnectKafkaProducer,
+  ensureKafkaTopics,
+} from "./services/kafka.service.js";
+import {
+  connectMongo,
+  disconnectMongo,
+} from "./services/mongodb.service.js";
+import { closeAppointmentEmailQueue } from "./services/email-queue.service.js";
+import { closeMaintenanceQueue } from "./services/maintenance-queue.service.js";
+import { logger } from "./utils/logger.js";
+
+await startupRetry("MongoDB", connectMongo);
+await startupRetry("Kafka topics", ensureKafkaTopics);
+await startupRetry("Kafka producer", connectKafkaProducer);
 
 const app = createApp();
 
-serve({ fetch: app.fetch, port: env.port }, (info) => {
-  console.log(`Hono API listening on http://localhost:${info.port}`);
-  console.log(`Register Restate endpoint: ${env.publicRestateEndpoint}`);
-  console.log(
-    `BullMQ dashboard: http://localhost:${info.port}${env.queueDashboardPath}`,
+const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
+  logger.info(
+    {
+      url: `http://localhost:${info.port}`,
+      restateEndpoint: env.publicRestateEndpoint,
+      queueDashboard: `http://localhost:${info.port}${env.queueDashboardPath}`,
+    },
+    "Hono API listening",
   );
 });
+
+async function shutdown(signal: NodeJS.Signals) {
+  logger.info({ signal }, "Stopping API server");
+  server.close();
+  await Promise.allSettled([
+    disconnectKafkaProducer(),
+    disconnectMongo(),
+    closeAppointmentEmailQueue(),
+    closeMaintenanceQueue(),
+  ]);
+}
+
+process.once("SIGINT", (signal) => {
+  void shutdown(signal).then(() => process.exit(0));
+});
+
+process.once("SIGTERM", (signal) => {
+  void shutdown(signal).then(() => process.exit(0));
+});
+
+async function startupRetry(name: string, action: () => Promise<unknown>) {
+  const attempts = 30;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await action();
+      return;
+    } catch (error) {
+      logger.warn(
+        {
+          name,
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Dependency is not ready",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+  }
+
+  throw new Error(`${name} was not ready after ${attempts} attempts`);
+}

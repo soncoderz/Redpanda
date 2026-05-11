@@ -1,17 +1,20 @@
 import { Queue, type JobsOptions } from "bullmq";
 import { z } from "zod";
 
-import { env, readPositiveIntEnv } from "../config/env.js";
-import type { AppointmentEmailPayload } from "../models/appointment.model.js";
+import { env } from "../config/env.js";
+import type {
+  AppointmentEmailPayload,
+  ReminderType,
+} from "../models/appointment.model.js";
+import { delayUntil, reminderTargetMs } from "../utils/appointment.utils.js";
+import { logger } from "../utils/logger.js";
 import { createRedisConnection } from "./redis.service.js";
 
 export const EMAIL_QUEUE_NAME = env.emailQueueName;
 
-export const EmailReminderType = z.enum(["before", "atTime", "after"]);
-export type EmailReminderType = z.infer<typeof EmailReminderType>;
-
 export const AppointmentEmailJobData = z.object({
-  reminder: EmailReminderType,
+  reminder: z.enum(["before", "atTime", "after"]),
+  scheduledFor: z.string().datetime(),
   appointment: z.object({
     id: z.string().min(1),
     version: z.number().int().min(1),
@@ -24,19 +27,20 @@ export const AppointmentEmailJobData = z.object({
 });
 
 export type AppointmentEmailJobData = z.infer<typeof AppointmentEmailJobData>;
+export type EmailReminderType = AppointmentEmailJobData["reminder"];
 
 const defaultJobOptions: JobsOptions = {
-  attempts: readPositiveIntEnv("EMAIL_JOB_ATTEMPTS", 3),
+  attempts: env.emailJobAttempts,
   backoff: {
     type: "exponential",
-    delay: readPositiveIntEnv("EMAIL_JOB_BACKOFF_MS", 2_000),
+    delay: env.emailJobBackoffMs,
   },
   removeOnComplete: {
-    age: readPositiveIntEnv("EMAIL_JOB_REMOVE_COMPLETE_AGE_SECONDS", 86_400),
-    count: readPositiveIntEnv("EMAIL_JOB_REMOVE_COMPLETE_COUNT", 10_000),
+    age: env.emailJobRemoveCompleteAgeSeconds,
+    count: env.emailJobRemoveCompleteCount,
   },
   removeOnFail: {
-    age: readPositiveIntEnv("EMAIL_JOB_REMOVE_FAIL_AGE_SECONDS", 604_800),
+    age: env.emailJobRemoveFailAgeSeconds,
   },
 };
 
@@ -48,21 +52,64 @@ export const appointmentEmailQueue = new Queue<AppointmentEmailJobData>(
   },
 );
 
-export async function enqueueAppointmentEmail(input: {
-  reminder: EmailReminderType;
+export async function scheduleAppointmentEmail(input: {
+  reminder: ReminderType;
   appointment: AppointmentEmailPayload;
+  now: string;
 }) {
-  const data = AppointmentEmailJobData.parse(input);
+  const targetMs = reminderTargetMs(
+    input.reminder,
+    input.appointment.startAt,
+  );
+  const nowMs = new Date(input.now).getTime();
+  const scheduledFor = new Date(targetMs).toISOString();
+
+  if (targetMs <= nowMs) {
+    return {
+      scheduled: false as const,
+      scheduledFor,
+      reason: "scheduled time already passed",
+    };
+  }
+
+  const data = AppointmentEmailJobData.parse({
+    reminder: input.reminder,
+    scheduledFor,
+    appointment: input.appointment,
+  });
   const jobId = appointmentEmailJobId(
     data.appointment.id,
     data.appointment.version,
     data.reminder,
   );
-  const job = await appointmentEmailQueue.add("send", data, { jobId });
+  const job = await appointmentEmailQueue.add("send", data, {
+    jobId,
+    delay: delayUntil(targetMs, nowMs),
+  });
 
   return {
+    scheduled: true as const,
     jobId: job.id ?? jobId,
+    scheduledFor,
   };
+}
+
+export async function removeAppointmentEmailJob(jobId: string) {
+  const job = await appointmentEmailQueue.getJob(jobId);
+  if (!job) {
+    return { removed: false, reason: "job not found" };
+  }
+
+  try {
+    await job.remove();
+    return { removed: true };
+  } catch (error) {
+    logger.warn(
+      { jobId, error: error instanceof Error ? error.message : String(error) },
+      "Unable to remove reminder job",
+    );
+    return { removed: false, reason: "job already active or completed" };
+  }
 }
 
 export function appointmentEmailJobId(

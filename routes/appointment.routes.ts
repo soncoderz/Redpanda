@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 
 import {
+  cancelAppointment,
   createAppointment,
   getAppointment,
-  markAppointmentArrived,
+  listAppointments,
   updateAppointment,
 } from "../controllers/appointment.controller.js";
 
@@ -11,9 +12,11 @@ export function createAppointmentRoutes() {
   const router = new Hono();
 
   router.post("/", createAppointment);
+  router.get("/", listAppointments);
   router.get("/:id", getAppointment);
+  router.patch("/:id", updateAppointment);
   router.put("/:id", updateAppointment);
-  router.post("/:id/arrived", markAppointmentArrived);
+  router.delete("/:id", cancelAppointment);
 
   return router;
 }

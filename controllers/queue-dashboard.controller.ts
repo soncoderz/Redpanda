@@ -4,6 +4,7 @@ import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { HonoAdapter } from "@bull-board/hono";
 
 import { appointmentEmailQueue } from "../services/email-queue.service.js";
+import { maintenanceQueue } from "../services/maintenance-queue.service.js";
 
 export function createQueueDashboard(basePath: string) {
   const serverAdapter = new HonoAdapter(serveStatic);
@@ -13,6 +14,9 @@ export function createQueueDashboard(basePath: string) {
     queues: [
       new BullMQAdapter(appointmentEmailQueue, {
         description: "Appointment reminder email jobs",
+      }),
+      new BullMQAdapter(maintenanceQueue, {
+        description: "Scheduled maintenance jobs",
       }),
     ],
     serverAdapter,

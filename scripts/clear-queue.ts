@@ -4,25 +4,38 @@ import {
   appointmentEmailQueue,
   closeAppointmentEmailQueue,
 } from "../services/email-queue.service.js";
+import {
+  closeMaintenanceQueue,
+  maintenanceQueue,
+} from "../services/maintenance-queue.service.js";
+import { logger } from "../utils/logger.js";
 
 async function clearAllJobs() {
-  console.log("Clearing all jobs from queue...\n");
+  logger.info("Clearing all BullMQ jobs");
 
-  const counts = await appointmentEmailQueue.getJobCounts();
-  console.log("Current job counts:", counts);
+  const [emailCounts, maintenanceCounts] = await Promise.all([
+    appointmentEmailQueue.getJobCounts(),
+    maintenanceQueue.getJobCounts(),
+  ]);
+  logger.info({ emailCounts, maintenanceCounts }, "Current queue counts");
 
-  // obliterate() removes ALL jobs and queue data from Redis
-  await appointmentEmailQueue.obliterate({ force: true });
+  await Promise.all([
+    appointmentEmailQueue.obliterate({ force: true }),
+    maintenanceQueue.obliterate({ force: true }),
+  ]);
 
-  const after = await appointmentEmailQueue.getJobCounts();
-  console.log("After clearing:", after);
-  console.log("\nAll jobs cleared!");
+  const [emailAfter, maintenanceAfter] = await Promise.all([
+    appointmentEmailQueue.getJobCounts(),
+    maintenanceQueue.getJobCounts(),
+  ]);
+  logger.info({ emailAfter, maintenanceAfter }, "Queues cleared");
 
   await closeAppointmentEmailQueue();
+  await closeMaintenanceQueue();
   process.exit(0);
 }
 
-clearAllJobs().catch((err) => {
-  console.error("Failed to clear jobs:", err);
+clearAllJobs().catch((error) => {
+  logger.error({ error }, "Failed to clear jobs");
   process.exit(1);
 });

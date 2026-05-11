@@ -2,12 +2,6 @@ import "dotenv/config";
 import { Worker, type Job } from "bullmq";
 
 import { env } from "../config/env.js";
-import {
-  sendAppointmentAfterEmail,
-  sendAppointmentAtTimeEmail,
-  sendAppointmentBeforeEmail,
-  type EmailSendResult,
-} from "../services/mailer.service.js";
 import type { AppointmentObject } from "../services/appointment.service.js";
 import {
   AppointmentEmailJobData,
@@ -15,8 +9,15 @@ import {
   EMAIL_QUEUE_NAME,
   type EmailReminderType,
 } from "../services/email-queue.service.js";
+import {
+  sendAppointmentAfterEmail,
+  sendAppointmentAtTimeEmail,
+  sendAppointmentBeforeEmail,
+  type EmailSendResult,
+} from "../services/mailer.service.js";
 import { createRedisConnection } from "../services/redis.service.js";
 import { restateClient } from "../services/restate-client.service.js";
+import { logger } from "../utils/logger.js";
 
 const connection = createRedisConnection();
 
@@ -34,32 +35,41 @@ const worker = new Worker<AppointmentEmailJobData>(
 );
 
 worker.on("completed", (job) => {
-  console.info("Appointment email job completed", {
-    jobId: job.id,
-    reminder: job.data.reminder,
-    appointmentId: job.data.appointment.id,
-    version: job.data.appointment.version,
-  });
+  logger.info(
+    {
+      jobId: job.id,
+      reminder: job.data.reminder,
+      appointmentId: job.data.appointment.id,
+      version: job.data.appointment.version,
+    },
+    "Appointment email job completed",
+  );
 });
 
 worker.on("failed", (job, error) => {
-  console.error("Appointment email job failed", {
-    jobId: job?.id,
-    reminder: job?.data.reminder,
-    appointmentId: job?.data.appointment.id,
-    version: job?.data.appointment.version,
-    attemptsMade: job?.attemptsMade,
-    error: error.message,
-  });
+  logger.error(
+    {
+      jobId: job?.id,
+      reminder: job?.data.reminder,
+      appointmentId: job?.data.appointment.id,
+      version: job?.data.appointment.version,
+      attemptsMade: job?.attemptsMade,
+      error: error.message,
+    },
+    "Appointment email job failed",
+  );
 });
 
-console.info("Appointment email worker started", {
-  queue: EMAIL_QUEUE_NAME,
-  restateRuntimeUrl: env.restateRuntimeUrl,
-  workerConcurrency: env.emailWorkerConcurrency,
-  rateLimitMax: env.emailRateMax,
-  rateLimitDurationMs: env.emailRateDurationMs,
-});
+logger.info(
+  {
+    queue: EMAIL_QUEUE_NAME,
+    restateRuntimeUrl: env.restateRuntimeUrl,
+    workerConcurrency: env.emailWorkerConcurrency,
+    rateLimitMax: env.emailRateMax,
+    rateLimitDurationMs: env.emailRateDurationMs,
+  },
+  "Appointment email worker started",
+);
 
 async function processEmailJob(job: Job<AppointmentEmailJobData>) {
   const data = AppointmentEmailJobData.parse(job.data);
@@ -69,27 +79,30 @@ async function processEmailJob(job: Job<AppointmentEmailJobData>) {
   );
   const jobId = job.id ?? "";
 
-  const delivery = await appointmentClient.startEmailDelivery({
+  const delivery = await appointmentClient.startReminderDelivery({
     reminder: data.reminder,
     version: data.appointment.version,
     jobId,
   });
 
   if (!delivery.shouldSend) {
-    console.info("Appointment email job skipped before send", {
-      jobId,
-      reminder: data.reminder,
-      appointmentId: data.appointment.id,
-      version: data.appointment.version,
-      reason: delivery.reason,
-    });
+    logger.info(
+      {
+        jobId,
+        reminder: data.reminder,
+        appointmentId: data.appointment.id,
+        version: data.appointment.version,
+        reason: delivery.reason,
+      },
+      "Appointment email job skipped before send",
+    );
     return delivery;
   }
 
   try {
     const result = await sendEmailByReminder(data.reminder, data.appointment);
 
-    await appointmentClient.recordEmailResult({
+    await appointmentClient.recordReminderResult({
       reminder: data.reminder,
       version: data.appointment.version,
       jobId,
@@ -99,7 +112,7 @@ async function processEmailJob(job: Job<AppointmentEmailJobData>) {
     return result;
   } catch (error) {
     if (isFinalAttempt(job)) {
-      await appointmentClient.recordEmailResult({
+      await appointmentClient.recordReminderResult({
         reminder: data.reminder,
         version: data.appointment.version,
         jobId,
@@ -153,7 +166,7 @@ function errorMessage(error: unknown) {
 }
 
 async function shutdown(signal: NodeJS.Signals) {
-  console.info(`Stopping appointment email worker after ${signal}`);
+  logger.info({ signal }, "Stopping appointment email worker");
   await worker.close();
   await closeAppointmentEmailQueue();
   await connection.quit();
