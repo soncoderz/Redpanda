@@ -11,13 +11,13 @@ import {
   type ReminderDeliveryRequest as ReminderDeliveryRequestType,
   type ReminderDeliveryResultInput as ReminderDeliveryResultInputType,
   type ReminderType,
-} from "../models/appointment.model.js";
+} from "../../models/appointment.model.js";
 import {
   applyAppointmentPatch,
   createAppointmentRecord,
   findAppointmentById,
   replaceAppointmentRecord,
-} from "../repositories/appointment.repository.js";
+} from "../../repositories/appointment.repository.js";
 import {
   applyScheduleResult,
   appendHistory,
@@ -32,12 +32,12 @@ import {
   toWorkflowState,
   WORKFLOW_STATE_KEY,
   type ReminderScheduleResult,
-} from "../utils/appointment.utils.js";
+} from "../../utils/appointment.utils.js";
 import {
   removeAppointmentEmailJob,
   scheduleAppointmentEmail,
-} from "./email-queue.service.js";
-import { publishAppointmentEvent } from "./event-publisher.service.js";
+} from "../queue/email-queue.service.js";
+import { publishAppointmentEvent } from "../messaging/event-publisher.service.js";
 
 const SIDE_EFFECT_RETRY = { maxRetryAttempts: 5 };
 

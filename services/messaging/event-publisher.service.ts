@@ -1,8 +1,8 @@
-import { env } from "../config/env.js";
+import { env } from "../../config/env.js";
 import {
   AppointmentEventEnvelope,
   type AppointmentEventEnvelope as AppointmentEventEnvelopeType,
-} from "../models/appointment.model.js";
+} from "../../models/appointment.model.js";
 import { getKafkaProducer } from "./kafka.service.js";
 import { emitRealtimeEvent } from "./realtime.service.js";
 

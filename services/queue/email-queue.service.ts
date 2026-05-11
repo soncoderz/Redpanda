@@ -1,14 +1,14 @@
 import { Queue, type JobsOptions } from "bullmq";
 import { z } from "zod";
 
-import { env } from "../config/env.js";
+import { env } from "../../config/env.js";
 import type {
   AppointmentEmailPayload,
   ReminderType,
-} from "../models/appointment.model.js";
-import { delayUntil, reminderTargetMs } from "../utils/appointment.utils.js";
-import { logger } from "../utils/logger.js";
-import { createRedisConnection } from "./redis.service.js";
+} from "../../models/appointment.model.js";
+import { delayUntil, reminderTargetMs } from "../../utils/appointment.utils.js";
+import { logger } from "../../utils/logger.js";
+import { createRedisConnection } from "../db/redis.service.js";
 
 export const EMAIL_QUEUE_NAME = env.emailQueueName;
 

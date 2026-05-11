@@ -2,21 +2,21 @@ import "dotenv/config";
 import { Worker, type Job } from "bullmq";
 
 import { env } from "../config/env.js";
-import type { AppointmentObject } from "../services/appointment.service.js";
+import type { AppointmentObject } from "../services/appointment/appointment.service.js";
 import {
   AppointmentEmailJobData,
   closeAppointmentEmailQueue,
   EMAIL_QUEUE_NAME,
   type EmailReminderType,
-} from "../services/email-queue.service.js";
+} from "../services/queue/email-queue.service.js";
 import {
   sendAppointmentAfterEmail,
   sendAppointmentAtTimeEmail,
   sendAppointmentBeforeEmail,
   type EmailSendResult,
-} from "../services/mailer.service.js";
-import { createRedisConnection } from "../services/redis.service.js";
-import { restateClient } from "../services/restate-client.service.js";
+} from "../services/mail/mailer.service.js";
+import { createRedisConnection } from "../services/db/redis.service.js";
+import { restateClient } from "../services/restate/restate-client.service.js";
 import { logger } from "../utils/logger.js";
 
 const connection = createRedisConnection();

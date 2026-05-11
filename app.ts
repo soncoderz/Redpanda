@@ -6,9 +6,9 @@ import { createQueueDashboard } from "./controllers/queue-dashboard.controller.j
 import { errorMiddleware } from "./middlewares/error.middleware.js";
 import { createAppointmentRoutes } from "./routes/appointment.routes.js";
 import { createRealtimeRoutes } from "./routes/realtime.routes.js";
-import { restateEndpoint } from "./services/restate-endpoint.service.js";
-import { kafkaProducerReady } from "./services/kafka.service.js";
-import { mongoReadyState } from "./services/mongodb.service.js";
+import { restateEndpoint } from "./services/restate/restate-endpoint.service.js";
+import { kafkaProducerReady } from "./services/messaging/kafka.service.js";
+import { mongoReadyState } from "./services/db/mongodb.service.js";
 
 export function createApp() {
   const app = new Hono();

@@ -2,14 +2,14 @@ import "dotenv/config";
 import { Worker, type Job } from "bullmq";
 
 import { env } from "../config/env.js";
-import { appointmentEmailQueue } from "../services/email-queue.service.js";
+import { appointmentEmailQueue } from "../services/queue/email-queue.service.js";
 import {
   closeMaintenanceQueue,
   MAINTENANCE_QUEUE_NAME,
   MaintenanceJobData,
   upsertCleanupScheduler,
-} from "../services/maintenance-queue.service.js";
-import { createRedisConnection } from "../services/redis.service.js";
+} from "../services/queue/maintenance-queue.service.js";
+import { createRedisConnection } from "../services/db/redis.service.js";
 import { logger } from "../utils/logger.js";
 
 const connection = createRedisConnection();

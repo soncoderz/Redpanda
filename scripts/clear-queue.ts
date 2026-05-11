@@ -3,11 +3,11 @@ import "dotenv/config";
 import {
   appointmentEmailQueue,
   closeAppointmentEmailQueue,
-} from "../services/email-queue.service.js";
+} from "../services/queue/email-queue.service.js";
 import {
   closeMaintenanceQueue,
   maintenanceQueue,
-} from "../services/maintenance-queue.service.js";
+} from "../services/queue/maintenance-queue.service.js";
 import { logger } from "../utils/logger.js";
 
 async function clearAllJobs() {

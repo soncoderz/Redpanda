@@ -6,11 +6,11 @@ import { recordProcessedEvent } from "../repositories/event-log.repository.js";
 import {
   createKafkaConsumer,
   subscribeToAppointmentEvents,
-} from "../services/kafka.service.js";
+} from "../services/messaging/kafka.service.js";
 import {
   connectMongo,
   disconnectMongo,
-} from "../services/mongodb.service.js";
+} from "../services/db/mongodb.service.js";
 import { logger } from "../utils/logger.js";
 
 await connectMongo();

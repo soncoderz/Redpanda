@@ -8,8 +8,8 @@ import {
   type SASLOptions,
 } from "kafkajs";
 
-import { env } from "../config/env.js";
-import { logger } from "../utils/logger.js";
+import { env } from "../../config/env.js";
+import { logger } from "../../utils/logger.js";
 
 const sasl: SASLOptions | undefined =
   env.kafkaUsername && env.kafkaPassword

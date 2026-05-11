@@ -7,13 +7,13 @@ import {
   connectKafkaProducer,
   disconnectKafkaProducer,
   ensureKafkaTopics,
-} from "./services/kafka.service.js";
+} from "./services/messaging/kafka.service.js";
 import {
   connectMongo,
   disconnectMongo,
-} from "./services/mongodb.service.js";
-import { closeAppointmentEmailQueue } from "./services/email-queue.service.js";
-import { closeMaintenanceQueue } from "./services/maintenance-queue.service.js";
+} from "./services/db/mongodb.service.js";
+import { closeAppointmentEmailQueue } from "./services/queue/email-queue.service.js";
+import { closeMaintenanceQueue } from "./services/queue/maintenance-queue.service.js";
 import { logger } from "./utils/logger.js";
 
 await startupRetry("MongoDB", connectMongo);

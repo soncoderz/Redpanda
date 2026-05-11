@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 
-import type { AppointmentEventEnvelope } from "../models/appointment.model.js";
+import type { AppointmentEventEnvelope } from "../../models/appointment.model.js";
 
 const emitter = new EventEmitter();
 emitter.setMaxListeners(1_000);

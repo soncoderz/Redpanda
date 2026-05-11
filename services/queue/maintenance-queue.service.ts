@@ -1,8 +1,8 @@
 import { Queue } from "bullmq";
 import { z } from "zod";
 
-import { env } from "../config/env.js";
-import { createRedisConnection } from "./redis.service.js";
+import { env } from "../../config/env.js";
+import { createRedisConnection } from "../db/redis.service.js";
 
 export const MAINTENANCE_QUEUE_NAME = env.maintenanceQueueName;
 

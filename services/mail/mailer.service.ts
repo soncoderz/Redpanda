@@ -1,8 +1,8 @@
 import sgMail from "@sendgrid/mail";
 
-import type { AppointmentEmailPayload } from "../models/appointment.model.js";
-import { env } from "../config/env.js";
-import { logger } from "../utils/logger.js";
+import type { AppointmentEmailPayload } from "../../models/appointment.model.js";
+import { env } from "../../config/env.js";
+import { logger } from "../../utils/logger.js";
 
 if (env.sendgridApiKey) {
   sgMail.setApiKey(env.sendgridApiKey);

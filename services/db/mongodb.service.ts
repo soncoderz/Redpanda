@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
-import { env } from "../config/env.js";
-import { logger } from "../utils/logger.js";
+import { env } from "../../config/env.js";
+import { logger } from "../../utils/logger.js";
 
 export async function connectMongo() {
   if (mongoose.connection.readyState === 1) {

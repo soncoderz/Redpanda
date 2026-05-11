@@ -2,7 +2,7 @@ import type { Context } from "hono";
 
 import {
   subscribeRealtimeEvents,
-} from "../services/realtime.service.js";
+} from "../services/messaging/realtime.service.js";
 
 const encoder = new TextEncoder();
 

@@ -3,8 +3,8 @@ import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { HonoAdapter } from "@bull-board/hono";
 
-import { appointmentEmailQueue } from "../services/email-queue.service.js";
-import { maintenanceQueue } from "../services/maintenance-queue.service.js";
+import { appointmentEmailQueue } from "../services/queue/email-queue.service.js";
+import { maintenanceQueue } from "../services/queue/maintenance-queue.service.js";
 
 export function createQueueDashboard(basePath: string) {
   const serverAdapter = new HonoAdapter(serveStatic);

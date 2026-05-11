@@ -1,8 +1,8 @@
 import type { Context } from "hono";
 
 import { listAppointments as listAppointmentRecords } from "../repositories/appointment.repository.js";
-import { restateClient } from "../services/restate-client.service.js";
-import type { AppointmentObject } from "../services/appointment.service.js";
+import { restateClient } from "../services/restate/restate-client.service.js";
+import type { AppointmentObject } from "../services/appointment/appointment.service.js";
 import { appointmentIdFromIdempotencyKey } from "../utils/appointment.utils.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -61,14 +61,16 @@ export async function bulkCreateAppointments(c: Context) {
             startAt,
             note: `Bulk created #${i + 1}`,
           })
-          .then((apt) => {
-            results.push({ index: i + 1, id: apt.id, status: "created" });
-          })
-          .catch((err) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            errors.push({ index: i + 1, error: msg });
-            logger.warn({ index: i + 1, error: msg }, "Bulk create failed");
-          }),
+          .then(
+            (apt: any) => {
+              results.push({ index: i + 1, id: apt.id, status: "created" });
+            },
+            (err: any) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              errors.push({ index: i + 1, error: msg });
+              logger.warn({ index: i + 1, error: msg }, "Bulk create failed");
+            }
+          ),
       );
     }
 
