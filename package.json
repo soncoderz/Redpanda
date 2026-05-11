@@ -1,0 +1,36 @@
+{
+  "name": "redpanda-appointment-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "worker:dev": "tsx watch scripts/email.worker.ts",
+    "worker": "node dist/scripts/email.worker.js",
+    "queue:clear": "tsx scripts/clear-queue.ts"
+  },
+  "dependencies": {
+    "@bull-board/api": "^7.0.0",
+    "@bull-board/hono": "^7.0.0",
+    "@hono/node-server": "^2.0.2",
+    "@restatedev/restate-sdk": "^1.14.2",
+    "@restatedev/restate-sdk-clients": "^1.14.2",
+    "bullmq": "^5.76.6",
+    "dotenv": "^17.4.2",
+    "hono": "^4.12.18",
+    "ioredis": "^5.10.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
