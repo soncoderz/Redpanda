@@ -93,6 +93,28 @@
           }
         },
         {
+          "name": "Bulk Create Appointments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"count\": 100,\n  \"startAt\": \"{{$isoTimestamp}}\",\n  \"service\": \"General Checkup\",\n  \"intervalMinutes\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/bulk",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments", "bulk"]
+            },
+            "description": "Bulk create multiple appointments. count: number of appointments (1-500), startAt: start time of first appointment, service: service name, intervalMinutes: time gap between appointments (default 5 min)."
+          }
+        },
+        {
           "name": "Create Appointment (with Idempotency-Key)",
           "event": [
             {

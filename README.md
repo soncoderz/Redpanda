@@ -50,50 +50,120 @@ Backend hệ thống đặt lịch hẹn xây dựng với Node.js/TypeScript, t
 
 ## Luồng hoạt động
 
+### 1. Tạo lịch hẹn
+
 ```
-Client                API (Hono)              Restate               BullMQ            SendGrid
-  │                      │                      │                     │                  │
-  │  POST /appointments  │                      │                     │                  │
-  │─────────────────────>│  create()             │                     │                  │
-  │                      │─────────────────────>│                     │                  │
-  │                      │                      │  Save to MongoDB    │                  │
-  │                      │                      │  Publish to Kafka   │                  │
-  │                      │                      │  Schedule reminders │                  │
-  │                      │                      │───────────────────>│                  │
-  │                      │<─────────────────────│                     │                  │
-  │  201 Created         │                      │                     │                  │
-  │<─────────────────────│                      │                     │                  │
-  │                      │                      │                     │                  │
-  │           (1 phút trước giờ hẹn)            │                     │                  │
-  │                      │                      │  sendBefore()       │                  │
-  │                      │                      │───────────────────>│  process job     │
-  │                      │                      │  startEmailDelivery │                  │
-  │                      │                      │<───────────────────│                  │
-  │                      │                      │  shouldSend: true   │                  │
-  │                      │                      │───────────────────>│                  │
-  │                      │                      │                     │  sgMail.send()   │
-  │                      │                      │                     │────────────────>│
-  │                      │                      │                     │  200 OK          │
-  │                      │                      │                     │<────────────────│
-  │                      │                      │  recordEmailResult  │                  │
-  │                      │                      │<───────────────────│                  │
+Client          API (Hono)         Restate            MongoDB         Redpanda          BullMQ
+  │                │                  │                  │                │                │
+  │ POST /appointments                │                  │                │                │
+  │───────────────>│                  │                  │                │                │
+  │                │  create()        │                  │                │                │
+  │                │─────────────────>│                  │                │                │
+  │                │                  │                  │                │                │
+  │                │                  │  save appointment │                │                │
+  │                │                  │─────────────────>│                │                │
+  │                │                  │                  │                │                │
+  │                │                  │  publish "appointment.created"    │                │
+  │                │                  │─────────────────────────────────>│                │
+  │                │                  │                  │                │                │
+  │                │                  │  schedule 3 delayed jobs (before/atTime/after)     │
+  │                │                  │──────────────────────────────────────────────────>│
+  │                │                  │                  │                │                │
+  │                │<─────────────────│                  │                │                │
+  │ 201 Created    │                  │                  │                │                │
+  │<───────────────│                  │                  │                │                │
+```
+
+### 2. Gửi email nhắc lịch (khi đến giờ)
+
+```
+BullMQ Worker       Restate            MongoDB          SendGrid         Redpanda
+     │                 │                  │                 │                │
+     │  (delayed job fires — 1 phút trước giờ hẹn)         │                │
+     │                 │                  │                 │                │
+     │ startReminderDelivery()            │                 │                │
+     │────────────────>│                  │                 │                │
+     │                 │  load appointment│                 │                │
+     │                 │─────────────────>│                 │                │
+     │                 │  check: version, │                 │                │
+     │                 │  status, sent    │                 │                │
+     │  shouldSend:true│                  │                 │                │
+     │<────────────────│                  │                 │                │
+     │                 │                  │                 │                │
+     │  sgMail.send() (gửi email nhắc lịch)                │                │
+     │─────────────────────────────────────────────────────>│                │
+     │  200 OK         │                  │                 │                │
+     │<─────────────────────────────────────────────────────│                │
+     │                 │                  │                 │                │
+     │ recordReminderResult(status:"sent")│                 │                │
+     │────────────────>│                  │                 │                │
+     │                 │  update reminder │                 │                │
+     │                 │─────────────────>│                 │                │
+     │                 │                  │                 │                │
+     │                 │  publish "reminder.sent"                            │
+     │                 │───────────────────────────────────────────────────>│
+     │                 │                  │                 │                │
+```
+
+### 3. Analytics Consumer (chạy song song)
+
+```
+Redpanda              Analytics Consumer           MongoDB
+   │                        │                        │
+   │  appointment.created   │                        │
+   │───────────────────────>│                        │
+   │                        │  save event log        │
+   │                        │───────────────────────>│
+   │                        │                        │
+   │  appointment.updated   │                        │
+   │───────────────────────>│                        │
+   │                        │  save event log        │
+   │                        │───────────────────────>│
+   │                        │                        │
+   │  reminder.sent         │                        │
+   │───────────────────────>│                        │
+   │                        │  save event log        │
+   │                        │───────────────────────>│
+   │                        │                        │
+```
+
+### 4. Real-time Events (SSE cho browser)
+
+```
+Browser                    API (Hono)
+   │                          │
+   │ GET /api/events/appointments
+   │─────────────────────────>│
+   │  SSE stream opened       │
+   │<─────────────────────────│
+   │                          │
+   │  event: appointment.created
+   │<─────────────────────────│
+   │                          │
+   │  event: appointment.updated
+   │<─────────────────────────│
+   │                          │
+   │  event: reminder.sent    │
+   │<─────────────────────────│
+   │                          │
 ```
 
 **Chi tiết từng bước:**
 
 1. Client gọi `POST /api/appointments` với thông tin lịch hẹn (có thể kèm `Idempotency-Key`)
 2. API gọi Restate virtual object `Appointment` (keyed by appointment ID)
-3. Restate lưu appointment vào MongoDB trong `ctx.run` (idempotent)
-4. Restate publish event `appointment.created` tới Redpanda qua KafkaJS
-5. Restate schedule 3 delayed reminder jobs trong BullMQ:
+3. Restate lưu appointment vào **MongoDB** trong `ctx.run` (idempotent)
+4. Restate publish event `appointment.created` tới **Redpanda** qua KafkaJS
+5. Restate schedule 3 delayed jobs trong **BullMQ** (qua Redis):
    - `before` — 1 phút trước giờ hẹn
    - `atTime` — đúng giờ hẹn
    - `after` — 1 phút sau giờ hẹn
 6. Khi đến giờ, BullMQ worker xử lý job:
-   - Gọi `startEmailDelivery()` trên Restate để kiểm tra (version đúng? đã arrived? đã gửi chưa?)
-   - Nếu `shouldSend: true` → gửi email qua SendGrid
-   - Gọi `recordEmailResult()` để ghi kết quả
-7. Analytics consumer đọc events từ Redpanda và lưu vào MongoDB
+   - Gọi `startReminderDelivery()` trên Restate để kiểm tra (version đúng? đã cancelled? đã gửi chưa?)
+   - Nếu `shouldSend: true` → gửi email qua **SendGrid**
+   - Gọi `recordReminderResult()` để ghi kết quả vào **MongoDB** và publish `reminder.sent` tới **Redpanda**
+7. **Analytics consumer** đọc events từ **Redpanda** và lưu event log vào **MongoDB**
+8. **SSE endpoint** push real-time events tới browser khi có thay đổi
 
 ## Yêu cầu
 
@@ -371,7 +441,7 @@ Hệ thống gửi 3 email nhắc lịch cho mỗi appointment:
 
 **Cơ chế an toàn:**
 - Job ID deterministic (appointment ID + version + reminder type) → không gửi trùng
-- Worker kiểm tra với Restate trước khi gửi (version match, chưa arrived, chưa gửi)
+- Worker kiểm tra với Restate trước khi gửi (version match, chưa cancelled, chưa gửi)
 - Retry với exponential backoff khi SendGrid lỗi tạm thời
 - Lỗi 401/403 (auth) → skip, không retry
 - Khi update appointment → cancel jobs cũ, schedule jobs mới

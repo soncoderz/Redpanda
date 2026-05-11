@@ -10,6 +10,13 @@ export const CreateAppointmentInput = AppointmentInput.extend({
   idempotencyKey: z.string().trim().min(1).optional(),
 });
 
+export const BulkCreateAppointmentInput = z.object({
+  count: z.number().int().min(1).max(500),
+  startAt: z.string().datetime(),
+  service: z.string().trim().min(1).default("General Checkup"),
+  intervalMinutes: z.number().int().min(0).default(5),
+});
+
 export const UpdateAppointmentInput = AppointmentPatchInput;
 
 export const ListAppointmentsQuery = z.object({
@@ -19,5 +26,6 @@ export const ListAppointmentsQuery = z.object({
 });
 
 export type CreateAppointmentInput = z.infer<typeof CreateAppointmentInput>;
+export type BulkCreateAppointmentInput = z.infer<typeof BulkCreateAppointmentInput>;
 export type UpdateAppointmentInput = z.infer<typeof UpdateAppointmentInput>;
 export type ListAppointmentsQuery = z.infer<typeof ListAppointmentsQuery>;
