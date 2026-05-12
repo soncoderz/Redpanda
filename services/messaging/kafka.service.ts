@@ -9,6 +9,10 @@ import {
 } from "kafkajs";
 
 import { env } from "../../config/env.js";
+import {
+  AppointmentEventEnvelope,
+  type AppointmentEventEnvelope as AppointmentEventEnvelopeType,
+} from "../../models/appointment.model.js";
 import { logger } from "../../utils/logger.js";
 
 const sasl: SASLOptions | undefined =
@@ -98,7 +102,7 @@ export function kafkaProducerReady() {
   return producerConnected;
 }
 
-export async function createKafkaConsumer(groupId: string) {
+async function createKafkaConsumer(groupId: string) {
   const consumer = kafka.consumer({
     groupId,
     allowAutoTopicCreation: false,
@@ -108,7 +112,7 @@ export async function createKafkaConsumer(groupId: string) {
   return consumer;
 }
 
-export async function subscribeToAppointmentEvents(
+async function subscribeToAppointmentEvents(
   consumer: Consumer,
   eachMessage: (payload: EachMessagePayload) => Promise<void>,
 ) {
@@ -118,4 +122,39 @@ export async function subscribeToAppointmentEvents(
   });
 
   await consumer.run({ eachMessage });
+}
+
+export async function runConsumer(options: {
+  groupId: string;
+  onEvent: (event: AppointmentEventEnvelopeType) => Promise<void>;
+  onShutdown?: () => Promise<void>;
+}) {
+  const consumer = await createKafkaConsumer(options.groupId);
+
+  logger.info(
+    { topic: env.kafkaAppointmentTopic, groupId: options.groupId },
+    "Consumer started",
+  );
+
+  const shutdown = async (signal: NodeJS.Signals) => {
+    logger.info({ signal }, "Stopping consumer");
+    await consumer.disconnect();
+    await options.onShutdown?.();
+  };
+
+  process.once("SIGINT", (signal) => {
+    void shutdown(signal).then(() => process.exit(0));
+  });
+
+  process.once("SIGTERM", (signal) => {
+    void shutdown(signal).then(() => process.exit(0));
+  });
+
+  await subscribeToAppointmentEvents(consumer, async ({ message }) => {
+    if (!message.value) return;
+    const event = AppointmentEventEnvelope.parse(
+      JSON.parse(message.value.toString("utf8")),
+    );
+    await options.onEvent(event);
+  });
 }

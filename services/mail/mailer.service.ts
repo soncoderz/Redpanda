@@ -1,6 +1,6 @@
 import sgMail from "@sendgrid/mail";
 
-import type { AppointmentEmailPayload } from "../../models/appointment.model.js";
+import type { AppointmentEmailPayload, ReminderType } from "../../models/appointment.model.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
 
@@ -20,74 +20,38 @@ export type EmailSendResult =
       responseBody?: unknown;
     };
 
-export async function sendAppointmentBeforeEmail(
-  appointment: AppointmentEmailPayload,
-) {
-  return sendAppointmentEmail({
-    to: appointment.customerEmail,
-    subject: `Nhắc lịch hẹn: ${appointment.service}`,
-    text: [
-      `Xin chào ${appointment.customerName},`,
-      "",
-      "Lịch hẹn của bạn sắp bắt đầu.",
-      `Mã lịch hẹn: ${appointment.id}`,
-      `Dịch vụ: ${appointment.service}`,
-      `Thời gian: ${appointment.startAt}`,
-      appointment.note ? `Ghi chú: ${appointment.note}` : undefined,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  });
-}
+const SUBJECT: Record<ReminderType, string> = {
+  before: "Nhắc lịch hẹn",
+  atTime: "Đến giờ hẹn",
+  after: "Theo dõi sau hẹn",
+};
 
-export async function sendAppointmentAtTimeEmail(
-  appointment: AppointmentEmailPayload,
-) {
-  return sendAppointmentEmail({
-    to: appointment.customerEmail,
-    subject: `Đến giờ hẹn: ${appointment.service}`,
-    text: [
-      `Xin chào ${appointment.customerName},`,
-      "",
-      "Đã đến giờ hẹn của bạn.",
-      `Mã lịch hẹn: ${appointment.id}`,
-      `Dịch vụ: ${appointment.service}`,
-      `Thời gian: ${appointment.startAt}`,
-      appointment.note ? `Ghi chú: ${appointment.note}` : undefined,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  });
-}
+const BODY: Record<ReminderType, string> = {
+  before: "Lịch hẹn của bạn sắp bắt đầu.",
+  atTime: "Đã đến giờ hẹn của bạn.",
+  after: "Lịch hẹn của bạn đã qua giờ.",
+};
 
-export async function sendAppointmentAfterEmail(
+export async function sendAppointmentEmail(
+  reminder: ReminderType,
   appointment: AppointmentEmailPayload,
-) {
-  return sendAppointmentEmail({
-    to: appointment.customerEmail,
-    subject: `Theo dõi sau hẹn: ${appointment.service}`,
-    text: [
-      `Xin chào ${appointment.customerName},`,
-      "",
-      "Lịch hẹn của bạn đã qua giờ.",
-      `Mã lịch hẹn: ${appointment.id}`,
-      `Dịch vụ: ${appointment.service}`,
-      `Thời gian: ${appointment.startAt}`,
-      appointment.note ? `Ghi chú: ${appointment.note}` : undefined,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  });
-}
+): Promise<EmailSendResult> {
+  const subject = `${SUBJECT[reminder]}: ${appointment.service}`;
+  const text = [
+    `Xin chào ${appointment.customerName},`,
+    "",
+    BODY[reminder],
+    `Mã lịch hẹn: ${appointment.id}`,
+    `Dịch vụ: ${appointment.service}`,
+    `Thời gian: ${appointment.startAt}`,
+    appointment.note ? `Ghi chú: ${appointment.note}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
-async function sendAppointmentEmail(message: {
-  to: string;
-  subject: string;
-  text: string;
-}): Promise<EmailSendResult> {
   if (!env.sendgridApiKey) {
     logger.info(
-      { to: message.to, subject: message.subject },
+      { to: appointment.customerEmail, subject },
       "Mock email sent (no SENDGRID_API_KEY)",
     );
     return { sent: true };
@@ -99,17 +63,17 @@ async function sendAppointmentEmail(message: {
 
   try {
     const [response] = await sgMail.send({
-      to: message.to,
+      to: appointment.customerEmail,
       from: {
         email: env.sendgridFromEmail,
         name: env.sendgridFromName,
       },
-      subject: message.subject,
-      text: message.text,
+      subject,
+      text,
     });
 
     logger.info(
-      { to: message.to, subject: message.subject, statusCode: response.statusCode },
+      { to: appointment.customerEmail, subject, statusCode: response.statusCode },
       "Email sent via SendGrid",
     );
     return { sent: true };
@@ -118,7 +82,7 @@ async function sendAppointmentEmail(message: {
     const responseBody = error?.response?.body;
 
     logger.error(
-      { to: message.to, statusCode, responseBody },
+      { to: appointment.customerEmail, statusCode, responseBody },
       "SendGrid email failed",
     );
 

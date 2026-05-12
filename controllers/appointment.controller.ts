@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 
 import { listAppointments as listAppointmentRecords } from "../models/appointment.repository.js";
-import { restateClient } from "../services/restate/restate-client.service.js";
+import { restateClient } from "../services/restate/restate.service.js";
 import type { AppointmentObject } from "../services/appointment/appointment.service.js";
 import { appointmentIdFromIdempotencyKey } from "../utils/appointment.utils.js";
 import { logger } from "../utils/logger.js";

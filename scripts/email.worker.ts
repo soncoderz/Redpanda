@@ -7,16 +7,13 @@ import {
   AppointmentEmailJobData,
   closeAppointmentEmailQueue,
   EMAIL_QUEUE_NAME,
-  type EmailReminderType,
 } from "../services/queue/email-queue.service.js";
 import {
-  sendAppointmentAfterEmail,
-  sendAppointmentAtTimeEmail,
-  sendAppointmentBeforeEmail,
+  sendAppointmentEmail,
   type EmailSendResult,
 } from "../services/mail/mailer.service.js";
 import { createRedisConnection } from "../services/db/redis.service.js";
-import { restateClient } from "../services/restate/restate-client.service.js";
+import { restateClient } from "../services/restate/restate.service.js";
 import { logger } from "../utils/logger.js";
 
 const connection = createRedisConnection();
@@ -100,7 +97,7 @@ async function processEmailJob(job: Job<AppointmentEmailJobData>) {
   }
 
   try {
-    const result = await sendEmailByReminder(data.reminder, data.appointment);
+    const result = await sendAppointmentEmail(data.reminder, data.appointment);
 
     await appointmentClient.recordReminderResult({
       reminder: data.reminder,
@@ -124,20 +121,6 @@ async function processEmailJob(job: Job<AppointmentEmailJobData>) {
     }
 
     throw error;
-  }
-}
-
-function sendEmailByReminder(
-  reminder: EmailReminderType,
-  appointment: AppointmentEmailJobData["appointment"],
-) {
-  switch (reminder) {
-    case "before":
-      return sendAppointmentBeforeEmail(appointment);
-    case "atTime":
-      return sendAppointmentAtTimeEmail(appointment);
-    case "after":
-      return sendAppointmentAfterEmail(appointment);
   }
 }
 

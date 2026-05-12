@@ -6,7 +6,6 @@ import type {
   AppointmentEmailPayload,
   ReminderType,
 } from "../../models/appointment.model.js";
-import { delayUntil, reminderTargetMs } from "../../utils/appointment.utils.js";
 import { logger } from "../../utils/logger.js";
 import { createRedisConnection } from "../db/redis.service.js";
 
@@ -27,7 +26,7 @@ export const AppointmentEmailJobData = z.object({
 });
 
 export type AppointmentEmailJobData = z.infer<typeof AppointmentEmailJobData>;
-export type EmailReminderType = AppointmentEmailJobData["reminder"];
+type EmailReminderType = AppointmentEmailJobData["reminder"];
 
 const defaultJobOptions: JobsOptions = {
   attempts: env.emailJobAttempts,
@@ -123,4 +122,20 @@ export function appointmentEmailJobId(
 
 export async function closeAppointmentEmailQueue() {
   await appointmentEmailQueue.close();
+}
+
+function reminderTargetMs(reminder: ReminderType, startAt: string) {
+  const startMs = new Date(startAt).getTime();
+  switch (reminder) {
+    case "before":
+      return startMs - env.reminderBeforeMs;
+    case "atTime":
+      return startMs;
+    case "after":
+      return startMs + env.reminderAfterMs;
+  }
+}
+
+function delayUntil(targetMs: number, nowMs: number) {
+  return Math.max(0, targetMs - nowMs);
 }
