@@ -8,6 +8,7 @@ import { logger as honoLogger } from "hono/logger";
 import { env } from "./config/env.js";
 import { errorMiddleware } from "./middlewares/error.middleware.js";
 import { createAppointmentRoutes } from "./routes/appointment.routes.js";
+import { createChatRoutes } from "./routes/chat.routes.js";
 import { appointmentEmailQueue } from "./services/queue/email-queue.service.js";
 import { maintenanceQueue } from "./services/queue/maintenance-queue.service.js";
 import { restateEndpoint } from "./services/restate/restate.service.js";
@@ -48,6 +49,7 @@ export function createApp() {
       restateEndpoint: "/restate",
       queueDashboard: env.queueDashboardPath,
       realtimeEvents: "/api/events/appointments",
+      chat: "/chat",
       api: {
         createAppointment: "POST /api/appointments",
         listAppointments: "GET /api/appointments",
@@ -72,6 +74,19 @@ export function createApp() {
   );
 
   app.route("/api/appointments", createAppointmentRoutes());
+  app.route("/api/chat", createChatRoutes());
+
+  app.get("/chat", async (c) => {
+    const { readFile } = await import("node:fs/promises");
+    const html = await readFile(new URL("./public/chat.html", import.meta.url), "utf-8");
+    return c.html(html);
+  });
+
+  app.get("/chat/:roomId", async (c) => {
+    const { readFile } = await import("node:fs/promises");
+    const html = await readFile(new URL("./public/chat.html", import.meta.url), "utf-8");
+    return c.html(html);
+  });
 
   // SSE endpoint
   app.get("/api/events/appointments", (c) => {

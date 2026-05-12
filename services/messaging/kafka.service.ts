@@ -46,6 +46,11 @@ export async function ensureKafkaTopics() {
         numPartitions: env.kafkaTopicPartitions,
         replicationFactor: env.kafkaTopicReplicationFactor,
       },
+      {
+        topic: env.kafkaChatTopic,
+        numPartitions: env.kafkaTopicPartitions,
+        replicationFactor: env.kafkaTopicReplicationFactor,
+      },
     ];
 
     await admin.createTopics({
