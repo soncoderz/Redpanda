@@ -16,12 +16,15 @@ import { closeAppointmentEmailQueue } from "./services/queue/email-queue.service
 import { closeMaintenanceQueue } from "./services/queue/maintenance-queue.service.js";
 import { logger } from "./utils/logger.js";
 
+// Kết nối MongoDB, tạo Kafka topics, kết nối Kafka producer (retry tối đa 30 lần)
 await startupRetry("MongoDB", connectMongo);
 await startupRetry("Kafka topics", ensureKafkaTopics);
 await startupRetry("Kafka producer", connectKafkaProducer);
 
+// Khởi tạo Hono app (routes, middleware, BullMQ dashboard, Restate endpoint)
 const app = createApp();
 
+// Chạy HTTP server
 const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
   logger.info(
     {
@@ -33,6 +36,7 @@ const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
   );
 });
 
+/** Tắt server, đóng tất cả kết nối */
 async function shutdown(signal: NodeJS.Signals) {
   logger.info({ signal }, "Stopping API server");
   server.close();
@@ -44,6 +48,7 @@ async function shutdown(signal: NodeJS.Signals) {
   ]);
 }
 
+// Bắt tín hiệu Ctrl+C / Docker stop → gọi shutdown
 process.once("SIGINT", (signal) => {
   void shutdown(signal).then(() => process.exit(0));
 });
@@ -52,6 +57,7 @@ process.once("SIGTERM", (signal) => {
   void shutdown(signal).then(() => process.exit(0));
 });
 
+/** Retry kết nối dependency, chờ 2s giữa mỗi lần thử */
 async function startupRetry(name: string, action: () => Promise<unknown>) {
   const attempts = 30;
 

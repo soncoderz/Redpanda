@@ -21,7 +21,7 @@ const encoder = new TextEncoder();
 export function createApp() {
   const app = new Hono();
 
-  // BullMQ Dashboard
+  // Cấu hình BullMQ Dashboard — xem trạng thái queue tại /admin/queues
   const serverAdapter = new HonoAdapter(serveStatic);
   serverAdapter.setBasePath(env.queueDashboardPath);
   createBullBoard({
@@ -39,9 +39,13 @@ export function createApp() {
     },
   });
 
+  // Middleware: log mọi request
   app.use(honoLogger());
+
+  // Mount BullMQ dashboard UI
   app.route(env.queueDashboardPath, serverAdapter.registerPlugin());
 
+  // Trang chủ — liệt kê các endpoint có sẵn
   app.get("/", (c) =>
     c.json({
       name: "Appointment booking backend",
@@ -60,6 +64,7 @@ export function createApp() {
     }),
   );
 
+  // Health check — kiểm tra trạng thái MongoDB, Kafka, Restate
   app.get("/health", (c) =>
     c.json({
       ok: true,
@@ -73,9 +78,11 @@ export function createApp() {
     }),
   );
 
+  // Mount REST API routes
   app.route("/api/appointments", createAppointmentRoutes());
   app.route("/api/chat", createChatRoutes());
 
+  // Trang chat HTML
   app.get("/chat", async (c) => {
     const { readFile } = await import("node:fs/promises");
     const html = await readFile(new URL("./public/chat.html", import.meta.url), "utf-8");
@@ -88,14 +95,16 @@ export function createApp() {
     return c.html(html);
   });
 
-  // SSE endpoint
+  // SSE endpoint — push real-time events tới browser qua EventEmitter
   app.get("/api/events/appointments", (c) => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
+        // Gửi event "ready" khi client kết nối
         controller.enqueue(
           encoder.encode("event: ready\ndata: {\"ok\":true}\n\n"),
         );
 
+        // Đăng ký nhận events từ EventEmitter → push tới SSE stream
         const unsubscribe = subscribeRealtimeEvents((event) => {
           controller.enqueue(
             encoder.encode(
@@ -110,10 +119,12 @@ export function createApp() {
           );
         });
 
+        // Gửi keep-alive mỗi 25s để giữ kết nối
         const keepAlive = setInterval(() => {
           controller.enqueue(encoder.encode(": keep-alive\n\n"));
         }, 25_000);
 
+        // Khi client ngắt kết nối → dọn dẹp
         c.req.raw.signal.addEventListener("abort", () => {
           clearInterval(keepAlive);
           unsubscribe();
@@ -135,14 +146,17 @@ export function createApp() {
     });
   });
 
+  // Middleware xử lý lỗi toàn cục
   app.onError(errorMiddleware);
 
+  // Mount Restate endpoint — Restate runtime gọi tới đây
   app.all("/restate", (c) => restateEndpoint(stripRestatePrefix(c.req.raw)));
   app.all("/restate/*", (c) => restateEndpoint(stripRestatePrefix(c.req.raw)));
 
   return app;
 }
 
+/** Xoá prefix /restate khỏi URL trước khi chuyển cho Restate SDK xử lý */
 function stripRestatePrefix(request: Request) {
   const url = new URL(request.url);
   url.pathname = url.pathname.replace(/^\/restate(?=\/|$)/, "") || "/";

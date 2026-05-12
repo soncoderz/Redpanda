@@ -4,6 +4,7 @@ import type { ChatMessage } from "./chat.model.js";
 
 export type ChatMessageDocument = HydratedDocument<ChatMessage>;
 
+/** Schema Mongoose cho collection chat_messages */
 const ChatMessageSchema = new Schema<ChatMessage>(
   {
     id: { type: String, required: true, unique: true },
@@ -18,8 +19,10 @@ const ChatMessageSchema = new Schema<ChatMessage>(
   },
 );
 
+// Index hỗ trợ query chat theo phòng và thời gian
 ChatMessageSchema.index({ roomId: 1, sentAt: 1 });
 
+/** Mongoose model cho chat messages — tái sử dụng nếu đã tồn tại */
 export const ChatMessageModel =
   mongoose.models.ChatMessage ??
   mongoose.model<ChatMessage>("ChatMessage", ChatMessageSchema);

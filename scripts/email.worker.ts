@@ -16,8 +16,10 @@ import { createRedisConnection } from "../config/redis.js";
 import { restateClient } from "../config/restate.js";
 import { logger } from "../utils/logger.js";
 
+// Kết nối Redis cho worker
 const connection = createRedisConnection();
 
+// Tạo BullMQ worker lắng nghe queue email (concurrency + rate limit)
 const worker = new Worker<AppointmentEmailJobData>(
   EMAIL_QUEUE_NAME,
   processEmailJob,
@@ -68,6 +70,7 @@ logger.info(
   "Appointment email worker started",
 );
 
+/** Xử lý 1 job email: validate qua Restate → gửi mail → ghi kết quả về Restate */
 async function processEmailJob(job: Job<AppointmentEmailJobData>) {
   const data = AppointmentEmailJobData.parse(job.data);
   const appointmentClient = restateClient.objectClient<AppointmentObject>(
@@ -76,12 +79,14 @@ async function processEmailJob(job: Job<AppointmentEmailJobData>) {
   );
   const jobId = job.id ?? "";
 
+  // Bước 1: Gọi Restate validate (đúng version? chưa cancel? chưa gửi?)
   const delivery = await appointmentClient.startReminderDelivery({
     reminder: data.reminder,
     version: data.appointment.version,
     jobId,
   });
 
+  // Nếu không cần gửi → skip
   if (!delivery.shouldSend) {
     logger.info(
       {
@@ -97,8 +102,10 @@ async function processEmailJob(job: Job<AppointmentEmailJobData>) {
   }
 
   try {
+    // Bước 2: Gửi email qua SendGrid (hoặc mock)
     const result = await sendAppointmentEmail(data.reminder, data.appointment);
 
+    // Bước 3: Ghi kết quả (sent/skipped) về Restate → cập nhật MongoDB
     await appointmentClient.recordReminderResult({
       reminder: data.reminder,
       version: data.appointment.version,
@@ -108,6 +115,7 @@ async function processEmailJob(job: Job<AppointmentEmailJobData>) {
 
     return result;
   } catch (error) {
+    // Nếu là lần thử cuối cùng → ghi lỗi về Restate
     if (isFinalAttempt(job)) {
       await appointmentClient.recordReminderResult({
         reminder: data.reminder,
@@ -124,6 +132,7 @@ async function processEmailJob(job: Job<AppointmentEmailJobData>) {
   }
 }
 
+/** Chuyển kết quả gửi email thành format để ghi vào Restate */
 function toRecordableResult(result: EmailSendResult) {
   if (result.sent) {
     return {
@@ -148,6 +157,7 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** Tắt worker, đóng queue và Redis */
 async function shutdown(signal: NodeJS.Signals) {
   logger.info({ signal }, "Stopping appointment email worker");
   await worker.close();

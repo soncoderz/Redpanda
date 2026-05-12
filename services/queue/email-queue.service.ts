@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { env } from "../../config/env.js";
 import {
   appointmentEmailQueue,
   EMAIL_QUEUE_NAME,
@@ -12,6 +13,7 @@ import { logger } from "../../utils/logger.js";
 
 export { EMAIL_QUEUE_NAME, appointmentEmailQueue };
 
+/** Schema validate dữ liệu job email trong BullMQ */
 export const AppointmentEmailJobData = z.object({
   reminder: z.enum(["before", "atTime", "after"]),
   scheduledFor: z.string().datetime(),
@@ -29,6 +31,7 @@ export const AppointmentEmailJobData = z.object({
 export type AppointmentEmailJobData = z.infer<typeof AppointmentEmailJobData>;
 type EmailReminderType = AppointmentEmailJobData["reminder"];
 
+/** Đẩy job email ngay lập tức vào BullMQ (không delay — Restate đã xử lý delay) */
 export async function enqueueImmediateEmail(input: {
   reminder: ReminderType;
   scheduledFor: string;
@@ -39,6 +42,8 @@ export async function enqueueImmediateEmail(input: {
     scheduledFor: input.scheduledFor,
     appointment: input.appointment,
   });
+
+  // Job ID deterministic → không tạo trùng job cho cùng appointment + version + reminder
   const jobId = appointmentEmailJobId(
     data.appointment.id,
     data.appointment.version,
@@ -49,6 +54,7 @@ export async function enqueueImmediateEmail(input: {
   return { jobId: job.id ?? jobId };
 }
 
+/** Xoá job khỏi queue (dùng khi update/cancel appointment) */
 export async function removeAppointmentEmailJob(jobId: string) {
   const job = await appointmentEmailQueue.getJob(jobId);
   if (!job) {
@@ -67,6 +73,7 @@ export async function removeAppointmentEmailJob(jobId: string) {
   }
 }
 
+/** Tạo job ID deterministic: appointment-email-{id}-{version}-{reminder} */
 export function appointmentEmailJobId(
   appointmentId: string,
   version: number,
@@ -76,6 +83,7 @@ export function appointmentEmailJobId(
   return `appointment-email-${encodedAppointmentId}-${version}-${reminder}`;
 }
 
+/** Đóng queue connection */
 export async function closeAppointmentEmailQueue() {
   await appointmentEmailQueue.close();
 }

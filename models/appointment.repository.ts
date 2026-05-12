@@ -5,6 +5,7 @@ import {
   type AppointmentState as AppointmentStateType,
 } from "./appointment.model.js";
 
+/** Lỗi repository: not_found hoặc duplicate */
 export class AppointmentRepositoryError extends Error {
   constructor(
     message: string,
@@ -14,6 +15,7 @@ export class AppointmentRepositoryError extends Error {
   }
 }
 
+/** Tạo appointment mới trong MongoDB — throw duplicate nếu đã tồn tại */
 export async function createAppointmentRecord(
   appointment: AppointmentStateType,
 ) {
@@ -32,11 +34,13 @@ export async function createAppointmentRecord(
   }
 }
 
+/** Tìm appointment theo ID — trả undefined nếu không tìm thấy */
 export async function findAppointmentById(id: string) {
   const doc = await AppointmentModel.findOne({ appointmentId: id }).lean();
   return doc ? toState(doc) : undefined;
 }
 
+/** Tìm appointment theo ID — throw not_found nếu không tìm thấy */
 export async function requireAppointmentById(id: string) {
   const appointment = await findAppointmentById(id);
   if (!appointment) {
@@ -49,6 +53,7 @@ export async function requireAppointmentById(id: string) {
   return appointment;
 }
 
+/** Ghi đè toàn bộ dữ liệu appointment trong MongoDB (findOneAndUpdate) */
 export async function replaceAppointmentRecord(
   appointment: AppointmentStateType,
 ) {
@@ -68,6 +73,7 @@ export async function replaceAppointmentRecord(
   return toState(doc);
 }
 
+/** Lấy danh sách appointments — filter theo status, email, giới hạn số lượng */
 export async function listAppointments(input: {
   status?: AppointmentStateType["status"];
   customerEmail?: string;
@@ -89,6 +95,7 @@ export async function listAppointments(input: {
   return docs.map(toState);
 }
 
+/** Áp dụng patch input vào appointment (merge fields) */
 export function applyAppointmentPatch(
   appointment: AppointmentStateType,
   patch: AppointmentPatchInput,
@@ -99,6 +106,7 @@ export function applyAppointmentPatch(
   };
 }
 
+/** Chuyển AppointmentState → MongoDB record (id → appointmentId) */
 function toRecord(appointment: AppointmentStateType): AppointmentRecord {
   const { id, ...rest } = appointment;
   return {
@@ -107,6 +115,7 @@ function toRecord(appointment: AppointmentStateType): AppointmentRecord {
   };
 }
 
+/** Chuyển MongoDB record → AppointmentState (appointmentId → id) và validate schema */
 function toState(record: AppointmentRecord | Record<string, unknown>) {
   const recordWithId = record as AppointmentRecord;
   return AppointmentState.parse({
@@ -127,6 +136,7 @@ function toState(record: AppointmentRecord | Record<string, unknown>) {
   });
 }
 
+/** Kiểm tra lỗi MongoDB duplicate key (code 11000) */
 function isMongoDuplicateKeyError(error: unknown) {
   return (
     typeof error === "object" &&

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+/** Schema validate chat message — dữ liệu lưu vào MongoDB và publish lên Kafka */
 export const ChatMessage = z.object({
   id: z.string().min(1),
   roomId: z.string().min(1),
@@ -10,6 +11,7 @@ export const ChatMessage = z.object({
 
 export type ChatMessage = z.infer<typeof ChatMessage>;
 
+/** Schema validate dữ liệu đầu vào gửi chat từ API */
 export const SendChatInput = z.object({
   roomId: z.string().min(1),
   from: z.string().min(1),

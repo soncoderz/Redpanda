@@ -2,6 +2,7 @@ import pino from "pino";
 
 import { env } from "../config/env.js";
 
+/** Logger toàn cục — sử dụng pino với format ISO timestamp */
 export const logger = pino({
   level: env.logLevel,
   base: {

@@ -8,6 +8,7 @@ import {
 import { env } from "./env.js";
 import { logger } from "../utils/logger.js";
 
+// Cấu hình SASL nếu có username/password (dùng cho Redpanda Cloud)
 const sasl: SASLOptions | undefined =
   env.kafkaUsername && env.kafkaPassword
     ? {
@@ -17,6 +18,7 @@ const sasl: SASLOptions | undefined =
       }
     : undefined;
 
+/** Kafka client kết nối tới Redpanda broker */
 export const kafka = new Kafka({
   clientId: env.kafkaClientId,
   brokers: env.kafkaBrokers,
@@ -28,6 +30,7 @@ export const kafka = new Kafka({
 let producer: Producer | undefined;
 let producerConnected = false;
 
+/** Tạo và kết nối Kafka producer (idempotent — không gửi trùng message) */
 export async function connectKafkaProducer(): Promise<Producer> {
   if (producerConnected) {
     return getKafkaProducer();
@@ -49,6 +52,7 @@ export async function connectKafkaProducer(): Promise<Producer> {
   return producer;
 }
 
+/** Lấy producer đang kết nối, tự connect nếu chưa */
 export async function getKafkaProducer(): Promise<Producer> {
   if (!producer || !producerConnected) {
     return connectKafkaProducer();
@@ -57,6 +61,7 @@ export async function getKafkaProducer(): Promise<Producer> {
   return producer;
 }
 
+/** Ngắt kết nối producer */
 export async function disconnectKafkaProducer() {
   if (producer && producerConnected) {
     await producer.disconnect();
@@ -64,6 +69,7 @@ export async function disconnectKafkaProducer() {
   }
 }
 
+/** Kiểm tra producer đã sẵn sàng chưa (dùng cho health check) */
 export function kafkaProducerReady() {
   return producerConnected;
 }

@@ -2,6 +2,7 @@ import mongoose, { Schema, type HydratedDocument } from "mongoose";
 
 import type { AppointmentEventEnvelope, AppointmentEventType } from "./appointment.model.js";
 
+/** Interface MongoDB document cho event log */
 export interface EventLogRecord {
   eventId: string;
   type: AppointmentEventType;
@@ -12,6 +13,7 @@ export interface EventLogRecord {
 
 export type EventLogDocument = HydratedDocument<EventLogRecord>;
 
+/** Schema Mongoose cho collection event_logs */
 const EventLogSchema = new Schema<EventLogRecord>(
   {
     eventId: { type: String, required: true, unique: true },
@@ -35,11 +37,14 @@ const EventLogSchema = new Schema<EventLogRecord>(
   },
 );
 
+/** Mongoose model cho event log — tái sử dụng nếu đã tồn tại */
 const EventLogModel =
   mongoose.models.EventLog ?? mongoose.model<EventLogRecord>("EventLog", EventLogSchema);
 
+/** Lưu event đã xử lý vào MongoDB — idempotent qua unique eventId (duplicate = skip) */
 export async function recordProcessedEvent(event: AppointmentEventEnvelope) {
   try {
+    // Tạo document mới trong collection event_logs
     await EventLogModel.create({
       eventId: event.eventId,
       type: event.type,
@@ -50,6 +55,7 @@ export async function recordProcessedEvent(event: AppointmentEventEnvelope) {
 
     return { inserted: true };
   } catch (error) {
+    // Lỗi duplicate key (11000) = event đã xử lý rồi → skip
     if (
       typeof error === "object" &&
       error !== null &&

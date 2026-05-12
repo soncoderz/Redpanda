@@ -6,12 +6,14 @@ import {
 import { getKafkaProducer } from "./kafka.service.js";
 import { emitRealtimeEvent } from "./realtime.service.js";
 
+/** Gửi event tới Redpanda topic + đẩy SSE real-time cho browser */
 export async function publishAppointmentEvent(
   event: AppointmentEventEnvelopeType,
 ) {
   const parsed = AppointmentEventEnvelope.parse(event);
-  const producer = await getKafkaProducer();
 
+  // Gửi message tới Redpanda (key = appointmentId để cùng partition)
+  const producer = await getKafkaProducer();
   await producer.send({
     topic: env.kafkaAppointmentTopic,
     acks: -1,
@@ -27,5 +29,6 @@ export async function publishAppointmentEvent(
     ],
   });
 
+  // Đẩy event tới SSE stream (browser) qua EventEmitter
   emitRealtimeEvent(parsed);
 }

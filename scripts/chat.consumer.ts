@@ -6,11 +6,14 @@ import { connectMongo, disconnectMongo } from "../services/db/mongodb.service.js
 import { runChatConsumer } from "../services/messaging/kafka.service.js";
 import { logger } from "../utils/logger.js";
 
+// Kết nối MongoDB trước khi chạy consumer
 await connectMongo();
 
+// Chạy Kafka consumer đọc từ topic chat-messages → lưu vào MongoDB
 await runChatConsumer({
   groupId: env.kafkaChatGroupId,
   async onMessage(message) {
+    // Lưu chat message vào collection chat_messages (idempotent qua unique id)
     const result = await saveChatMessage(message);
     if (result.inserted) {
       logger.info(

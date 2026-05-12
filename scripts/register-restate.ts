@@ -6,8 +6,10 @@ import { logger } from "../utils/logger.js";
 
 const maxAttempts = 30;
 
+// Retry đăng ký endpoint với Restate Admin API (chờ Restate sẵn sàng)
 for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   try {
+    // POST /deployments — đăng ký URL mà Restate sẽ gọi callback tới
     const response = await fetch(`${env.restateAdminUrl}/deployments`, {
       method: "POST",
       headers: {
@@ -24,6 +26,7 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 
     const body = await response.text();
 
+    // 200 = đăng ký thành công, 409 = đã đăng ký rồi → cả hai đều OK
     if (response.ok || response.status === 409) {
       logger.info(
         {
@@ -56,6 +59,7 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     );
   }
 
+  // Chờ 2s trước khi thử lại
   await sleep(2_000);
 }
 

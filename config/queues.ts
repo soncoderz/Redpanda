@@ -5,8 +5,10 @@ import { createRedisConnection } from "./redis.js";
 import type { AppointmentEmailJobData } from "../services/queue/email-queue.service.js";
 import type { MaintenanceJobData } from "../services/queue/maintenance-queue.service.js";
 
+/** Tên queue email — dùng để tạo queue và worker cùng tên */
 export const EMAIL_QUEUE_NAME = env.emailQueueName;
 
+/** Cấu hình mặc định cho email job: retry, backoff, tự xóa khi hoàn thành/thất bại */
 const defaultEmailJobOptions: JobsOptions = {
   attempts: env.emailJobAttempts,
   backoff: {
@@ -22,6 +24,7 @@ const defaultEmailJobOptions: JobsOptions = {
   },
 };
 
+/** BullMQ queue cho email nhắc lịch hẹn — kết nối Redis */
 export const appointmentEmailQueue = new Queue<AppointmentEmailJobData>(
   EMAIL_QUEUE_NAME,
   {
@@ -30,8 +33,10 @@ export const appointmentEmailQueue = new Queue<AppointmentEmailJobData>(
   },
 );
 
+/** Tên queue bảo trì — dọn dẹp job cũ định kỳ */
 export const MAINTENANCE_QUEUE_NAME = env.maintenanceQueueName;
 
+/** BullMQ queue cho job bảo trì — kết nối Redis */
 export const maintenanceQueue = new Queue<MaintenanceJobData>(
   MAINTENANCE_QUEUE_NAME,
   {

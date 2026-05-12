@@ -9,11 +9,14 @@ import {
 } from "../services/db/mongodb.service.js";
 import { logger } from "../utils/logger.js";
 
+// Kết nối MongoDB trước khi chạy consumer
 await connectMongo();
 
+// Chạy Kafka consumer đọc từ topic appointment-events → lưu event log vào MongoDB
 await runConsumer({
   groupId: env.kafkaAnalyticsGroupId,
   async onEvent(event) {
+    // Lưu event vào collection event_logs (idempotent qua unique eventId)
     const result = await recordProcessedEvent(event);
     if (!result.inserted) {
       logger.info({ eventId: event.eventId }, "Duplicate event skipped");

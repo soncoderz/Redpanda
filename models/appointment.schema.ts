@@ -6,6 +6,7 @@ import type {
   ReminderDeliveryStatus,
 } from "./appointment.model.js";
 
+/** Interface MongoDB document — map từ AppointmentState (id → appointmentId) */
 export interface AppointmentRecord
   extends Omit<AppointmentState, "id"> {
   appointmentId: string;
@@ -13,6 +14,7 @@ export interface AppointmentRecord
 
 export type AppointmentDocument = HydratedDocument<AppointmentRecord>;
 
+/** Schema Mongoose cho trạng thái gửi email reminder */
 const ReminderDeliveryStatusSchema = new Schema<ReminderDeliveryStatus>(
   {
     version: { type: Number, required: true, min: 1 },
@@ -32,6 +34,7 @@ const ReminderDeliveryStatusSchema = new Schema<ReminderDeliveryStatus>(
   { _id: false },
 );
 
+/** Schema Mongoose cho một dòng lịch sử thay đổi */
 const AppointmentHistoryEntrySchema = new Schema<AppointmentHistoryEntry>(
   {
     type: {
@@ -58,6 +61,7 @@ const AppointmentHistoryEntrySchema = new Schema<AppointmentHistoryEntry>(
   { _id: false, minimize: false },
 );
 
+/** Schema Mongoose chính cho collection appointments */
 const AppointmentSchema = new Schema<AppointmentRecord>(
   {
     appointmentId: { type: String, required: true, unique: true },
@@ -95,9 +99,11 @@ const AppointmentSchema = new Schema<AppointmentRecord>(
   },
 );
 
+// Index hỗ trợ query theo thời gian và email
 AppointmentSchema.index({ startAt: 1 });
 AppointmentSchema.index({ customerEmail: 1, startAt: 1 });
 
+/** Mongoose model cho collection appointments — tái sử dụng nếu đã tồn tại */
 export const AppointmentModel =
   mongoose.models.Appointment ??
   mongoose.model<AppointmentRecord>("Appointment", AppointmentSchema);

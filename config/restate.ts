@@ -4,6 +4,7 @@ import * as clients from "@restatedev/restate-sdk-clients";
 import { env } from "./env.js";
 import { appointmentObject } from "../services/appointment/appointment.service.js";
 
+/** Client gọi tới Restate runtime (dùng trong controller và email worker) */
 export const restateClient = clients.connect({
   url: env.restateRuntimeUrl,
   headers: env.restateAuthToken
@@ -13,6 +14,7 @@ export const restateClient = clients.connect({
     : undefined,
 });
 
+/** HTTP endpoint nhận callback từ Restate runtime → xử lý bởi appointmentObject */
 export const restateEndpoint = restate.createEndpointHandler({
   services: [appointmentObject],
   identityKeys: env.restateIdentityKeys?.length

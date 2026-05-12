@@ -14,8 +14,10 @@ import { logger } from "../utils/logger.js";
 
 const connection = createRedisConnection();
 
+// Đăng ký job dọn dẹp định kỳ (mỗi 1 giờ mặc định)
 await upsertCleanupScheduler();
 
+// Tạo worker xử lý maintenance jobs (concurrency=1 vì không cần song song)
 const worker = new Worker<MaintenanceJobData>(
   MAINTENANCE_QUEUE_NAME,
   processMaintenanceJob,
@@ -41,6 +43,7 @@ logger.info(
   "Maintenance worker started",
 );
 
+/** Xử lý maintenance job theo type */
 async function processMaintenanceJob(job: Job<MaintenanceJobData>) {
   const data = MaintenanceJobData.parse(job.data);
 
@@ -50,6 +53,7 @@ async function processMaintenanceJob(job: Job<MaintenanceJobData>) {
   }
 }
 
+/** Dọn dẹp jobs đã completed/failed cũ hơn grace period trong email queue */
 async function cleanupQueues() {
   const [completedEmailJobs, failedEmailJobs] = await Promise.all([
     appointmentEmailQueue.clean(
@@ -66,6 +70,7 @@ async function cleanupQueues() {
   };
 }
 
+/** Tắt worker, đóng queue và Redis */
 async function shutdown(signal: NodeJS.Signals) {
   logger.info({ signal }, "Stopping maintenance worker");
   await worker.close();

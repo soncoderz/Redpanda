@@ -12,18 +12,22 @@ import {
   UpdateAppointmentInput,
 } from "../validation/appointment.validation.js";
 
+/** POST /api/appointments — tạo lịch hẹn mới qua Restate */
 export async function createAppointment(c: Context) {
   const body = await c.req.json().catch(() => undefined);
   const payload = CreateAppointmentInput.parse(body);
   const headerIdempotencyKey = c.req.header("Idempotency-Key");
   const idempotencyKey = headerIdempotencyKey ?? payload.idempotencyKey;
   const { id, ...appointmentInput } = payload;
+
+  // Tạo ID từ idempotency key (deterministic) hoặc random UUID
   const appointmentId =
     id ??
     (idempotencyKey
       ? appointmentIdFromIdempotencyKey(idempotencyKey)
       : crypto.randomUUID());
 
+  // Gọi Restate virtual object "Appointment" → handler create
   const appointment = await appointmentClient(appointmentId).create({
     ...appointmentInput,
     idempotencyKey,
@@ -32,6 +36,7 @@ export async function createAppointment(c: Context) {
   return c.json(appointment, 201);
 }
 
+/** POST /api/appointments/bulk — tạo nhiều lịch hẹn (chạy song song theo batch 10) */
 export async function bulkCreateAppointments(c: Context) {
   const body = await c.req.json().catch(() => undefined);
   const input = BulkCreateAppointmentInput.parse(body);
@@ -40,6 +45,7 @@ export async function bulkCreateAppointments(c: Context) {
   const results: { index: number; id: string; status: string }[] = [];
   const errors: { index: number; error: string }[] = [];
 
+  // Chia thành batch 10 để không quá tải Restate
   const batchSize = 10;
   for (let batchStart = 0; batchStart < input.count; batchStart += batchSize) {
     const batchEnd = Math.min(batchStart + batchSize, input.count);
@@ -52,6 +58,7 @@ export async function bulkCreateAppointments(c: Context) {
         baseTime + i * input.intervalMinutes * 60_000,
       ).toISOString();
 
+      // Gọi Restate create cho mỗi appointment trong batch
       promises.push(
         appointmentClient(appointmentId)
           .create({
@@ -74,6 +81,7 @@ export async function bulkCreateAppointments(c: Context) {
       );
     }
 
+    // Đợi hết batch trước khi chạy batch tiếp
     await Promise.all(promises);
   }
 
@@ -89,6 +97,7 @@ export async function bulkCreateAppointments(c: Context) {
   );
 }
 
+/** GET /api/appointments — danh sách lịch hẹn (đọc trực tiếp từ MongoDB) */
 export async function listAppointments(c: Context) {
   const query = ListAppointmentsQuery.parse({
     status: c.req.query("status"),
@@ -100,27 +109,27 @@ export async function listAppointments(c: Context) {
   return c.json({ appointments });
 }
 
+/** GET /api/appointments/:id — chi tiết lịch hẹn (qua Restate để đảm bảo consistency) */
 export async function getAppointment(c: Context) {
   const appointment = await appointmentClient(appointmentId(c)).get();
-
   return c.json(appointment);
 }
 
+/** PATCH /api/appointments/:id — cập nhật lịch hẹn qua Restate */
 export async function updateAppointment(c: Context) {
   const body = await c.req.json().catch(() => undefined);
   const payload = UpdateAppointmentInput.parse(body);
-
   const appointment = await appointmentClient(appointmentId(c)).update(payload);
-
   return c.json(appointment);
 }
 
+/** DELETE /api/appointments/:id — huỷ lịch hẹn qua Restate */
 export async function cancelAppointment(c: Context) {
   const appointment = await appointmentClient(appointmentId(c)).cancel();
-
   return c.json(appointment);
 }
 
+/** Tạo Restate object client cho appointment ID */
 function appointmentClient(id: string) {
   return restateClient.objectClient<AppointmentObject>(
     { name: "Appointment" },
@@ -128,6 +137,7 @@ function appointmentClient(id: string) {
   );
 }
 
+/** Lấy appointment ID từ URL param */
 function appointmentId(c: Context) {
   const id = c.req.param("id");
   if (!id) {
