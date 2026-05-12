@@ -6,10 +6,10 @@ import {
   ReminderDeliveryRequest,
   ReminderDeliveryResultInput,
   ReminderDeliveryStartResult,
+  ReminderQueueRequest,
   UpdateAppointmentWorkflowInput,
   type AppointmentState as AppointmentStateType,
-  type ReminderDeliveryRequest as ReminderDeliveryRequestType,
-  type ReminderDeliveryResultInput as ReminderDeliveryResultInputType,
+  type ReminderQueueRequest as ReminderQueueRequestType,
   type ReminderType,
 } from "../../models/appointment.model.js";
 import {
@@ -34,8 +34,11 @@ import {
   type ReminderScheduleResult,
 } from "../../utils/appointment.utils.js";
 import {
+  appointmentEmailJobId,
+  delayUntil,
+  enqueueAppointmentEmail,
   removeAppointmentEmailJob,
-  scheduleAppointmentEmail,
+  reminderTargetMs,
 } from "../queue/email-queue.service.js";
 import { publishAppointmentEvent } from "../messaging/event-publisher.service.js";
 
@@ -213,6 +216,16 @@ export const appointmentObject = restate.object({
       },
     ),
 
+    queueReminderDelivery: restate.createObjectHandler(
+      {
+        input: restate.serde.schema(ReminderQueueRequest),
+        output: restate.serde.schema(AppointmentState),
+      },
+      async (ctx: restate.ObjectContext, input) => {
+        return queueReminderDelivery(ctx, input);
+      },
+    ),
+
     startReminderDelivery: restate.createObjectHandler(
       {
         input: restate.serde.schema(ReminderDeliveryRequest),
@@ -237,6 +250,7 @@ export const appointmentObject = restate.object({
           at: now,
           version: appointment.version,
           reminder: input.reminder,
+          invocationId: appointment.reminders[input.reminder].invocationId,
           jobId: input.jobId,
         });
 
@@ -267,7 +281,7 @@ export const appointmentObject = restate.object({
         switch (input.result.status) {
           case "sent":
             appointment.reminders[input.reminder] = { ...r, sent: true, scheduled: false, jobId: input.jobId, sentAt: now, error: undefined };
-            appointment.history.push({ type: "reminder_sent", at: now, version: appointment.version, reminder: input.reminder, jobId: input.jobId });
+            appointment.history.push({ type: "reminder_sent", at: now, version: appointment.version, reminder: input.reminder, invocationId: r.invocationId, jobId: input.jobId });
             appointment.updatedAt = now;
             await ctx.run("persist sent", () => replaceAppointmentRecord(appointment), RETRY);
             await publishEvent(ctx, buildReminderSentEvent({ appointment, reminder: input.reminder, occurredAt: now, jobId: input.jobId }));
@@ -276,7 +290,7 @@ export const appointmentObject = restate.object({
 
           case "skipped":
             appointment.reminders[input.reminder] = { ...r, sent: false, scheduled: false, jobId: input.jobId, skippedAt: now, error: input.result.reason };
-            appointment.history.push({ type: "reminder_skipped", at: now, version: appointment.version, reminder: input.reminder, jobId: input.jobId, details: { reason: input.result.reason, statusCode: input.result.statusCode, responseBody: input.result.responseBody } });
+            appointment.history.push({ type: "reminder_skipped", at: now, version: appointment.version, reminder: input.reminder, invocationId: r.invocationId, jobId: input.jobId, details: { reason: input.result.reason, statusCode: input.result.statusCode, responseBody: input.result.responseBody } });
             appointment.updatedAt = now;
             await ctx.run("persist skipped", () => replaceAppointmentRecord(appointment), RETRY);
             ctx.set(WORKFLOW_STATE_KEY, toWorkflowState(appointment));
@@ -284,7 +298,7 @@ export const appointmentObject = restate.object({
 
           case "failed":
             appointment.reminders[input.reminder] = { ...r, sent: false, scheduled: false, jobId: input.jobId, failedAt: now, error: input.result.error };
-            appointment.history.push({ type: "reminder_failed", at: now, version: appointment.version, reminder: input.reminder, jobId: input.jobId, details: { error: input.result.error } });
+            appointment.history.push({ type: "reminder_failed", at: now, version: appointment.version, reminder: input.reminder, invocationId: r.invocationId, jobId: input.jobId, details: { error: input.result.error } });
             appointment.updatedAt = now;
             await ctx.run("persist failed", () => replaceAppointmentRecord(appointment), RETRY);
             ctx.set(WORKFLOW_STATE_KEY, toWorkflowState(appointment));
@@ -312,11 +326,7 @@ async function persistReminderSchedule(
   appointment: AppointmentStateType,
   now: string,
 ) {
-  const result = await ctx.run(
-    "schedule reminders",
-    () => scheduleReminderJobs(appointment, now),
-    RETRY,
-  );
+  const result = await scheduleReminderJobs(ctx, appointment, now);
 
   const updated = applyScheduleResult(appointment, result);
   updated.updatedAt = now;
@@ -325,42 +335,200 @@ async function persistReminderSchedule(
 }
 
 async function scheduleReminderJobs(
+  ctx: restate.ObjectContext,
   appointment: AppointmentStateType,
   now: string,
 ): Promise<ReminderScheduleResult> {
   const reminders = emptyReminderStatus(appointment.version);
   const events: ReminderScheduleResult["events"] = [];
   const payload = toEmailPayload(appointment);
+  const nowMs = new Date(now).getTime();
+  const appointmentClient = ctx.objectSendClient(appointmentObject, ctx.key);
 
   for (const reminder of REMINDER_TYPES) {
-    const result = await scheduleAppointmentEmail({ reminder, appointment: payload, now });
+    const targetMs = reminderTargetMs(reminder, appointment.startAt);
+    const scheduledFor = new Date(targetMs).toISOString();
 
-    if (result.scheduled) {
-      reminders[reminder] = { version: appointment.version, sent: false, scheduled: true, jobId: result.jobId, scheduledAt: now, scheduledFor: result.scheduledFor };
-      events.push({ type: "reminder_scheduled", at: now, version: appointment.version, reminder, jobId: result.jobId, details: { scheduledFor: result.scheduledFor } });
-    } else {
-      reminders[reminder] = { version: appointment.version, sent: false, scheduled: false, skippedAt: now, scheduledFor: result.scheduledFor, error: result.reason };
-      events.push({ type: "reminder_skipped", at: now, version: appointment.version, reminder, details: { reason: result.reason, scheduledFor: result.scheduledFor } });
+    if (targetMs <= nowMs) {
+      reminders[reminder] = {
+        version: appointment.version,
+        sent: false,
+        scheduled: false,
+        skippedAt: now,
+        scheduledFor,
+        error: "scheduled time already passed",
+      };
+      events.push({
+        type: "reminder_skipped",
+        at: now,
+        version: appointment.version,
+        reminder,
+        details: {
+          reason: "scheduled time already passed",
+          scheduledFor,
+        },
+      });
+      continue;
     }
+
+    const jobId = appointmentEmailJobId(
+      appointment.id,
+      appointment.version,
+      reminder,
+    );
+    const delayedCall = appointmentClient.queueReminderDelivery(
+      {
+        reminder,
+        version: appointment.version,
+        jobId,
+        scheduledFor,
+        appointment: payload,
+      },
+      restate.rpc.sendOpts({
+        delay: delayUntil(targetMs, nowMs),
+        name: `queue ${reminder} appointment email`,
+      }),
+    );
+    const invocationId = await delayedCall.invocationId;
+
+    reminders[reminder] = {
+      version: appointment.version,
+      sent: false,
+      scheduled: true,
+      invocationId,
+      jobId,
+      scheduledAt: now,
+      scheduledFor,
+    };
+    events.push({
+      type: "reminder_scheduled",
+      at: now,
+      version: appointment.version,
+      reminder,
+      invocationId,
+      jobId,
+      details: { scheduledFor },
+    });
   }
 
   return { reminders, events };
+}
+
+async function queueReminderDelivery(
+  ctx: restate.ObjectContext,
+  input: ReminderQueueRequestType,
+) {
+  const appointment = await requireAppointment(ctx);
+  const now = await ctx.date.toJSON();
+  const stale = validateReminderJob(appointment, input);
+
+  if (stale) {
+    ctx.set(WORKFLOW_STATE_KEY, toWorkflowState(appointment));
+    return appointment;
+  }
+
+  if (!appointment.reminders[input.reminder].scheduled) {
+    ctx.set(WORKFLOW_STATE_KEY, toWorkflowState(appointment));
+    return appointment;
+  }
+
+  try {
+    const result = await ctx.run(
+      `enqueue ${input.reminder} appointment email`,
+      () =>
+        enqueueAppointmentEmail({
+          reminder: input.reminder,
+          appointment: input.appointment,
+          scheduledFor: input.scheduledFor,
+          jobId: input.jobId,
+        }),
+      RETRY,
+    );
+    const reminderStatus = appointment.reminders[input.reminder];
+
+    appointment.reminders[input.reminder] = {
+      ...reminderStatus,
+      scheduled: false,
+      jobId: result.jobId,
+      queuedAt: now,
+      error: undefined,
+    };
+    appointment.history.push({
+      type: "reminder_queued",
+      at: now,
+      version: appointment.version,
+      reminder: input.reminder,
+      invocationId: reminderStatus.invocationId,
+      jobId: result.jobId,
+      details: {
+        scheduledFor: input.scheduledFor,
+      },
+    });
+    appointment.updatedAt = now;
+
+    await ctx.run(
+      "persist reminder queued",
+      () => replaceAppointmentRecord(appointment),
+      RETRY,
+    );
+  } catch (error) {
+    const reminderStatus = appointment.reminders[input.reminder];
+
+    appointment.reminders[input.reminder] = {
+      ...reminderStatus,
+      sent: false,
+      scheduled: false,
+      failedAt: now,
+      error: errorMessage(error),
+    };
+    appointment.history.push({
+      type: "reminder_failed",
+      at: now,
+      version: appointment.version,
+      reminder: input.reminder,
+      invocationId: reminderStatus.invocationId,
+      jobId: input.jobId,
+      details: {
+        error: errorMessage(error),
+        stage: "enqueue",
+      },
+    });
+    appointment.updatedAt = now;
+
+    await ctx.run(
+      "persist reminder enqueue failure",
+      () => replaceAppointmentRecord(appointment),
+      RETRY,
+    );
+  }
+
+  ctx.set(WORKFLOW_STATE_KEY, toWorkflowState(appointment));
+  return appointment;
 }
 
 async function cancelReminderJobs(
   ctx: restate.ObjectContext,
   appointment: AppointmentStateType,
 ) {
-  const jobIds = REMINDER_TYPES
+  const pendingReminders = REMINDER_TYPES
     .map((r) => appointment.reminders[r])
-    .filter((s) => s.scheduled && !s.sent)
+    .filter(
+      (s) => !s.sent && (s.scheduled || s.queuedAt || s.startedAt),
+    );
+  const jobIds = pendingReminders
     .map((s) => s.jobId)
     .filter((id): id is string => Boolean(id));
+
+  for (const invocationId of pendingReminders
+    .map((s) => s.invocationId)
+    .filter((id): id is string => Boolean(id))) {
+    ctx.cancel(restate.InvocationIdParser.fromString(invocationId));
+  }
 
   if (jobIds.length === 0) return;
 
   await ctx.run(
-    "cancel reminders",
+    "cancel queued reminders",
     () => Promise.all(jobIds.map(removeAppointmentEmailJob)),
     RETRY,
   );

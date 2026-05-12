@@ -21,6 +21,7 @@ export const ReminderDeliveryStatus = z.object({
   version: z.number().int().min(1),
   sent: z.boolean(),
   scheduled: z.boolean(),
+  invocationId: z.string().optional(),
   jobId: z.string().optional(),
   scheduledAt: z.string().optional(),
   scheduledFor: z.string().optional(),
@@ -46,6 +47,7 @@ export const AppointmentHistoryEntry = z.object({
     "cancelled",
     "reminder_scheduled",
     "reminder_cancelled",
+    "reminder_queued",
     "reminder_started",
     "reminder_sent",
     "reminder_skipped",
@@ -54,6 +56,7 @@ export const AppointmentHistoryEntry = z.object({
   at: z.string(),
   version: z.number().int().min(1),
   reminder: ReminderType.optional(),
+  invocationId: z.string().optional(),
   jobId: z.string().optional(),
   details: z.record(z.string(), z.unknown()).optional(),
 });
@@ -85,6 +88,11 @@ export const ReminderDeliveryRequest = z.object({
   reminder: ReminderType,
   version: z.number().int().min(1),
   jobId: z.string().min(1),
+});
+
+export const ReminderQueueRequest = ReminderDeliveryRequest.extend({
+  scheduledFor: z.string().datetime(),
+  appointment: AppointmentEmailPayload,
 });
 
 export const ReminderDeliveryStartResult = z.object({
@@ -149,6 +157,7 @@ export type UpdateAppointmentWorkflowInput = z.infer<
 export type ReminderDeliveryRequest = z.infer<
   typeof ReminderDeliveryRequest
 >;
+export type ReminderQueueRequest = z.infer<typeof ReminderQueueRequest>;
 export type ReminderDeliveryResultInput = z.infer<
   typeof ReminderDeliveryResultInput
 >;

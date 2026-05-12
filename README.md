@@ -7,9 +7,9 @@ Backend hệ thống đặt lịch hẹn xây dựng với Node.js/TypeScript, t
 | Công nghệ | Vai trò |
 |---|---|
 | **Hono** | REST API framework, health endpoint, queue dashboard, Server-Sent Events |
-| **Restate** | Durable execution — đảm bảo mỗi bước (lưu DB, publish event, schedule job) không bị lặp lại khi crash/retry. Virtual Object lock per appointment |
+| **Restate** | Durable execution — đảm bảo mỗi bước (lưu DB, publish event, delayed invocation) không bị lặp lại khi crash/retry. Virtual Object lock per appointment |
 | **MongoDB + Mongoose** | Lưu trữ dữ liệu lịch hẹn, reminder metadata, history, event log |
-| **BullMQ + Redis** | Job queue gửi email nhắc lịch, delayed jobs, retry với exponential backoff, rate limiting |
+| **BullMQ + Redis** | Job queue xử lý email nhắc lịch khi đã đến giờ, retry với exponential backoff, rate limiting |
 | **Redpanda (Kafka)** | Event streaming — mỗi thay đổi appointment được publish 1 lần, nhiều consumer đọc độc lập |
 | **SendGrid** | Gửi email nhắc lịch thật (fallback mock khi không có API key) |
 | **Telegram Bot** | Gửi thông báo real-time khi có lịch hẹn mới/hủy/cập nhật |
@@ -41,7 +41,7 @@ Backend hệ thống đặt lịch hẹn xây dựng với Node.js/TypeScript, t
 │   ├── maintenance.worker.ts          Worker dọn dẹp queue
 │   ├── analytics.consumer.ts          Kafka consumer → lưu event log
 │   ├── telegram.consumer.ts           Kafka consumer → gửi Telegram
-│   ├── register-restate.ts            Đăng ký endpoint với Restate
+│   ├── chat.consumer.ts               Kafka consumer → lưu chat message
 │   └── clear-queue.ts                 Xóa toàn bộ jobs trong queue
 ├── services/
 │   ├── appointment/
@@ -130,8 +130,8 @@ Client          API (Hono)         Restate            MongoDB         Redpanda  
   │                │                  │  publish "appointment.created"    │                │
   │                │                  │─────────────────────────────────▶│                │
   │                │                  │                  │                │                │
-  │                │                  │  schedule 3 delayed jobs (before/atTime/after)     │
-  │                │                  │──────────────────────────────────────────────────▶│
+  │                │                  │  schedule 3 Restate delayed invocations             │
+  │                │                  │  (before/atTime/after)                              │
   │                │                  │                  │                │                │
   │                │◀─────────────────│                  │                │                │
   │ 201 Created    │                  │                  │                │                │
@@ -149,12 +149,14 @@ Client          API (Hono)         Restate            MongoDB         Redpanda  
 ### 2. Gửi email nhắc lịch (khi đến giờ)
 
 ```
-BullMQ Worker       Restate            MongoDB          SendGrid         Redpanda
+Restate             BullMQ Worker       MongoDB          SendGrid         Redpanda
      │                 │                  │                 │                │
-     │  (delayed job fires — 1 phút trước giờ hẹn)         │                │
+     │  delayed invocation fires — 1 phút trước giờ hẹn     │                │
+     │  enqueue BullMQ job                                  │                │
+     │────────────────▶│                  │                 │                │
      │                 │                  │                 │                │
      │ startReminderDelivery()            │                 │                │
-     │────────────────▶│                  │                 │                │
+     │◀────────────────│                  │                 │                │
      │                 │  load appointment│                 │                │
      │                 │─────────────────▶│                 │                │
      │                 │  check: version, │                 │                │
@@ -241,17 +243,18 @@ Lưu ý: SSE dùng EventEmitter trong process (không qua Redpanda)
 2. Controller gọi **Restate virtual object** `Appointment` (keyed by appointment ID)
 3. Restate lưu appointment vào **MongoDB** trong `ctx.run()` (idempotent, crash-safe)
 4. Restate publish event `appointment.created` tới **Redpanda** qua KafkaJS
-5. Restate schedule 3 delayed jobs trong **BullMQ** (qua Redis):
+5. Restate schedule 3 **delayed invocations** trong chính Restate:
    - `before` — 1 phút trước giờ hẹn
    - `atTime` — đúng giờ hẹn
    - `after` — 1 phút sau giờ hẹn
-6. Khi đến giờ, **Email Worker** xử lý job:
+6. Khi đến giờ, Restate gọi `queueReminderDelivery()` để enqueue job immediate vào **BullMQ**.
+7. **Email Worker** xử lý job:
    - Gọi `startReminderDelivery()` trên Restate để kiểm tra (version đúng? đã cancelled? đã gửi chưa?)
    - Nếu `shouldSend: true` → gửi email qua **SendGrid**
    - Gọi `recordReminderResult()` để ghi kết quả vào MongoDB và publish `reminder.sent` tới Redpanda
-7. **Analytics consumer** đọc events từ Redpanda → lưu event log vào MongoDB
-8. **Telegram consumer** đọc events từ Redpanda → gửi thông báo vào Telegram Bot
-9. **SSE endpoint** push real-time events tới browser (qua EventEmitter, không qua Redpanda)
+8. **Analytics consumer** đọc events từ Redpanda → lưu event log vào MongoDB
+9. **Telegram consumer** đọc events từ Redpanda → gửi thông báo vào Telegram Bot
+10. **SSE endpoint** push real-time events tới browser (qua EventEmitter, không qua Redpanda)
 
 ## Vai trò của từng công nghệ
 
@@ -262,20 +265,23 @@ Lưu ý: SSE dùng EventEmitter trong process (không qua Redpanda)
 // Nếu crash giữa chừng → restart từ bước bị lỗi, không chạy lại bước đã xong
 await ctx.run("save to MongoDB", () => createAppointmentRecord(appointment));
 await ctx.run("publish event", () => publishAppointmentEvent(event));
-await ctx.run("schedule jobs", () => scheduleReminderJobs(appointment));
+ctx.objectSendClient(appointmentObject, ctx.key).queueReminderDelivery(
+  payload,
+  restate.rpc.sendOpts({ delay }),
+);
 ```
 
 - **Virtual Object lock**: chỉ 1 request xử lý cùng lúc trên 1 appointment ID → không race condition
 - **Crash recovery**: server crash → restart từ bước bị lỗi
 - **Validate trước khi gửi email**: Worker gọi Restate kiểm tra version, status trước khi gửi
 
-### BullMQ + Redis — Delayed Job Queue
+### BullMQ + Redis — Email Job Queue
 
-- Hẹn giờ gửi 3 email nhắc lịch (before / atTime / after)
+- Chỉ nhận job khi Restate delayed invocation đã đến giờ
 - Dashboard xem trực quan job: `http://localhost:9080/admin/queues`
 - Retry tự động với exponential backoff
 - Rate limiting: tối đa N email/giây
-- Hủy job dễ dàng khi update/cancel appointment
+- Worker vẫn gọi Restate để validate version/status trước khi gửi
 
 ### Redpanda (Kafka) — Event Streaming
 
@@ -331,24 +337,27 @@ docker compose up -d redis redpanda-0 redpanda-console restate
 
 ### Bước 4: Chạy app và workers
 
-Mở **5 terminal** riêng biệt:
+Mở **4 terminal** riêng biệt:
 
 ```bash
 # Terminal 1: API server
 npm run dev
 
-# Terminal 2: Đăng ký Restate endpoint (chạy 1 lần sau khi API sẵn sàng)
-npm run restate:register
-
-# Terminal 3: Email worker
+# Terminal 2: Email worker
 npm run worker:email:dev
 
-# Terminal 4: Analytics consumer (Redpanda → MongoDB)
+# Terminal 3: Analytics consumer (Redpanda → MongoDB)
 npm run consumer:analytics:dev
 
-# Terminal 5: Telegram consumer (Redpanda → Telegram Bot)
+# Terminal 4: Telegram consumer (Redpanda → Telegram Bot)
 npm run consumer:telegram:dev
 ```
+
+Đăng ký Restate endpoint bằng Postman collection:
+
+1. Chạy request `1. Backend Health`
+2. Chạy request `2A. Register Restate Deployment - Local Docker`
+3. Nếu deploy cloud, đổi biến `publicRestateEndpointCloud` rồi chạy `2B. Register Restate Deployment - Cloud`
 
 Optional:
 
@@ -382,7 +391,6 @@ npm run worker:maintenance:dev
 | `npm run worker:maintenance:dev` | Maintenance worker (dev) |
 | `npm run consumer:analytics:dev` | Analytics consumer (dev) |
 | `npm run consumer:telegram:dev` | Telegram consumer (dev) |
-| `npm run restate:register` | Đăng ký endpoint với Restate |
 | `npm run queue:clear` | Xóa tất cả jobs trong BullMQ |
 
 ## API Endpoints
@@ -590,19 +598,13 @@ Xem `.env.example` để biết tất cả biến cấu hình.
 
 Restate chưa đăng ký endpoint:
 
-```bash
-npm run restate:register
-```
+Chạy request `2A. Register Restate Deployment - Local Docker` trong Postman.
 
 ### Lỗi "handler 'xxx' was not found"
 
 Restate có phiên bản cũ. Force re-register:
 
-```bash
-curl http://localhost:19070/deployments \
-  -H "content-type: application/json" \
-  -d '{"uri": "http://host.docker.internal:9080/restate", "force": true}'
-```
+Chạy lại request `2A. Register Restate Deployment - Local Docker` trong Postman. Request này đã có `"force": true`.
 
 ### Lỗi "unable to reach the remote endpoint"
 

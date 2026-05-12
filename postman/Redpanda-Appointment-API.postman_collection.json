@@ -19,9 +19,98 @@
       "key": "roomId",
       "value": "general",
       "type": "string"
+    },
+    {
+      "key": "restateAdminUrl",
+      "value": "http://localhost:19070",
+      "type": "string"
+    },
+    {
+      "key": "publicRestateEndpointLocalDocker",
+      "value": "http://host.docker.internal:9080/restate",
+      "type": "string"
+    },
+    {
+      "key": "publicRestateEndpointCloud",
+      "value": "https://your-domain.example.com/restate",
+      "type": "string"
+    },
+    {
+      "key": "appointmentStartAt",
+      "value": "2026-05-12T09:26:18.243Z",
+      "type": "string"
     }
   ],
   "item": [
+    {
+      "name": "1. Backend Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Check API health before registering the Restate deployment."
+      }
+    },
+    {
+      "name": "2A. Register Restate Deployment - Local Docker",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"uri\": \"{{publicRestateEndpointLocalDocker}}\",\n  \"force\": true,\n  \"use_http_11\": true\n}"
+        },
+        "url": {
+          "raw": "{{restateAdminUrl}}/deployments",
+          "host": [
+            "{{restateAdminUrl}}"
+          ],
+          "path": [
+            "deployments"
+          ]
+        },
+        "description": "Register or update the local Restate deployment when Restate runs in Docker and the API runs on the host machine."
+      }
+    },
+    {
+      "name": "2B. Register Restate Deployment - Cloud",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"uri\": \"{{publicRestateEndpointCloud}}\",\n  \"force\": true,\n  \"use_http_11\": true\n}"
+        },
+        "url": {
+          "raw": "{{restateAdminUrl}}/deployments",
+          "host": [
+            "{{restateAdminUrl}}"
+          ],
+          "path": [
+            "deployments"
+          ]
+        },
+        "description": "Register or update the Restate deployment for a public/cloud API endpoint. Change publicRestateEndpointCloud before running."
+      }
+    },
     {
       "name": "Health & Info",
       "item": [
@@ -32,8 +121,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/",
-              "host": ["{{baseUrl}}"],
-              "path": [""]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                ""
+              ]
             },
             "description": "Returns API overview with available endpoints"
           }
@@ -45,8 +138,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
             },
             "description": "Returns health status including MongoDB, Kafka, Restate connectivity"
           }
@@ -59,6 +156,16 @@
         {
           "name": "Create Appointment",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const startAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();",
+                  "pm.collectionVariables.set('appointmentStartAt', startAt);"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -87,12 +194,17 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerName\": \"Nguyen Van A\",\n  \"customerEmail\": \"nguyenvana@example.com\",\n  \"service\": \"Hair Cut\",\n  \"startAt\": \"{{$isoTimestamp}}\",\n  \"note\": \"First visit\"\n}"
+              "raw": "{\n  \"customerName\": \"Nguyen Van A\",\n  \"customerEmail\": \"nguyenvana@example.com\",\n  \"service\": \"Hair Cut\",\n  \"startAt\": \"{{appointmentStartAt}}\",\n  \"note\": \"First visit\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/appointments",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
             },
             "description": "Create a new appointment. Auto-saves the appointment ID for subsequent requests."
           }
@@ -109,19 +221,47 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"count\": 100,\n  \"startAt\": \"{{$isoTimestamp}}\",\n  \"service\": \"General Checkup\",\n  \"intervalMinutes\": 5\n}"
+              "raw": "{\n  \"count\": 100,\n  \"startAt\": \"{{appointmentStartAt}}\",\n  \"service\": \"General Checkup\",\n  \"intervalMinutes\": 5\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/appointments/bulk",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments", "bulk"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "bulk"
+              ]
             },
             "description": "Bulk create multiple appointments. count: number of appointments (1-500), startAt: start time of first appointment, service: service name, intervalMinutes: time gap between appointments (default 5 min)."
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const startAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();",
+                  "pm.collectionVariables.set('appointmentStartAt', startAt);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Create Appointment (with Idempotency-Key)",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const startAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();",
+                  "pm.collectionVariables.set('appointmentStartAt', startAt);"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -149,12 +289,17 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerName\": \"Tran Thi B\",\n  \"customerEmail\": \"tranthib@example.com\",\n  \"service\": \"Nail Art\",\n  \"startAt\": \"{{$isoTimestamp}}\"\n}"
+              "raw": "{\n  \"customerName\": \"Tran Thi B\",\n  \"customerEmail\": \"tranthib@example.com\",\n  \"service\": \"Nail Art\",\n  \"startAt\": \"{{appointmentStartAt}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/appointments",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
             },
             "description": "Create with Idempotency-Key header to prevent duplicates. Same key = same appointment."
           }
@@ -162,6 +307,16 @@
         {
           "name": "Create Appointment (with custom ID)",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const startAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();",
+                  "pm.collectionVariables.set('appointmentStartAt', startAt);"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -185,12 +340,17 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"apt-test-001\",\n  \"customerName\": \"Le Van C\",\n  \"customerEmail\": \"levanc@example.com\",\n  \"service\": \"Massage\",\n  \"startAt\": \"{{$isoTimestamp}}\",\n  \"note\": \"60 minute session\"\n}"
+              "raw": "{\n  \"id\": \"apt-test-001\",\n  \"customerName\": \"Le Van C\",\n  \"customerEmail\": \"levanc@example.com\",\n  \"service\": \"Massage\",\n  \"startAt\": \"{{appointmentStartAt}}\",\n  \"note\": \"60 minute session\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/appointments",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ]
             },
             "description": "Create with a custom appointment ID provided in the body."
           }
@@ -202,8 +362,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/appointments?limit=50",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments"
+              ],
               "query": [
                 {
                   "key": "limit",
@@ -234,8 +399,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments", "{{appointmentId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{appointmentId}}"
+              ]
             },
             "description": "Get a single appointment by ID from Restate state (includes emailStatus, history, reminderInvocations)."
           }
@@ -256,8 +427,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments", "{{appointmentId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{appointmentId}}"
+              ]
             },
             "description": "Partial update — send only the fields you want to change. Increments version and reschedules reminder emails."
           }
@@ -274,15 +451,33 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerName\": \"Nguyen Van A\",\n  \"customerEmail\": \"nguyenvana@example.com\",\n  \"service\": \"Hair Cut + Wash\",\n  \"startAt\": \"{{$isoTimestamp}}\",\n  \"note\": \"Changed time and service\"\n}"
+              "raw": "{\n  \"customerName\": \"Nguyen Van A\",\n  \"customerEmail\": \"nguyenvana@example.com\",\n  \"service\": \"Hair Cut + Wash\",\n  \"startAt\": \"{{appointmentStartAt}}\",\n  \"note\": \"Changed time and service\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments", "{{appointmentId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{appointmentId}}"
+              ]
             },
             "description": "Full update — same handler as PATCH. Increments version and reschedules reminder emails."
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const startAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();",
+                  "pm.collectionVariables.set('appointmentStartAt', startAt);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Cancel Appointment",
@@ -291,8 +486,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "appointments", "{{appointmentId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "appointments",
+                "{{appointmentId}}"
+              ]
             },
             "description": "Cancel an appointment. Cancels all pending reminder emails."
           }
@@ -336,8 +537,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/chat/send",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "chat", "send"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat",
+                "send"
+              ]
             },
             "description": "Send a chat message as Alice. Message is published to Redpanda and broadcast via SSE to all listeners in the room."
           }
@@ -375,8 +582,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/chat/send",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "chat", "send"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat",
+                "send"
+              ]
             },
             "description": "Send a chat message as Bob to the same room."
           }
@@ -393,8 +606,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/chat/stream/{{roomId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "chat", "stream", "{{roomId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat",
+                "stream",
+                "{{roomId}}"
+              ]
             },
             "description": "Server-Sent Events stream for real-time chat messages in a room. Events: connected (on join), message (each new message). Open in browser at /chat/{{roomId}} for full UI experience."
           }
@@ -406,8 +626,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/chat/{{roomId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["chat", "{{roomId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "{{roomId}}"
+              ]
             },
             "description": "Open in browser to use the chat UI. Enter your name and start chatting. Open multiple tabs to simulate multiple users."
           }
@@ -429,8 +654,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/events/appointments",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "events", "appointments"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "events",
+                "appointments"
+              ]
             },
             "description": "Server-Sent Events stream for real-time appointment updates. Events: appointment.created, appointment.updated, appointment.cancelled, reminder.sent. Open in browser or use 'curl -N' for best experience."
           }
@@ -447,8 +678,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/admin/queues",
-              "host": ["{{baseUrl}}"],
-              "path": ["admin", "queues"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "queues"
+              ]
             },
             "description": "Bull Board dashboard — open in browser to view email queue jobs, status, retries."
           }

@@ -122,18 +122,6 @@ services:
     networks:
       - backend
 
-  restate-register:
-    build: .
-    restart: "no"
-    command: ["node", "dist/scripts/register-restate.js"]
-    environment:
-      <<: *app-env
-    depends_on:
-      - api
-      - restate
-    networks:
-      - backend
-
   email-worker:
     build: .
     restart: unless-stopped

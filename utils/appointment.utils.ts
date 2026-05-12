@@ -114,7 +114,10 @@ export function markPendingRemindersCancelled(
 ) {
   for (const reminder of REMINDER_TYPES) {
     const status = appointment.reminders[reminder];
-    if (!status.scheduled || status.sent) {
+    if (
+      status.sent ||
+      (!status.scheduled && !status.queuedAt && !status.startedAt)
+    ) {
       continue;
     }
 
@@ -130,6 +133,7 @@ export function markPendingRemindersCancelled(
       at: now,
       version: appointment.version,
       reminder,
+      invocationId: status.invocationId,
       jobId: status.jobId,
       details: { reason },
     });

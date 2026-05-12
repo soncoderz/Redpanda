@@ -30,45 +30,28 @@ export const AppointmentEmailJobData = z.object({
 export type AppointmentEmailJobData = z.infer<typeof AppointmentEmailJobData>;
 type EmailReminderType = AppointmentEmailJobData["reminder"];
 
-export async function scheduleAppointmentEmail(input: {
+export async function enqueueAppointmentEmail(input: {
   reminder: ReminderType;
   appointment: AppointmentEmailPayload;
-  now: string;
+  scheduledFor: string;
+  jobId?: string;
 }) {
-  const targetMs = reminderTargetMs(
-    input.reminder,
-    input.appointment.startAt,
-  );
-  const nowMs = new Date(input.now).getTime();
-  const scheduledFor = new Date(targetMs).toISOString();
-
-  if (targetMs <= nowMs) {
-    return {
-      scheduled: false as const,
-      scheduledFor,
-      reason: "scheduled time already passed",
-    };
-  }
-
   const data = AppointmentEmailJobData.parse({
     reminder: input.reminder,
-    scheduledFor,
+    scheduledFor: input.scheduledFor,
     appointment: input.appointment,
   });
-  const jobId = appointmentEmailJobId(
-    data.appointment.id,
-    data.appointment.version,
-    data.reminder,
-  );
-  const job = await appointmentEmailQueue.add("send", data, {
-    jobId,
-    delay: delayUntil(targetMs, nowMs),
-  });
+  const jobId =
+    input.jobId ??
+    appointmentEmailJobId(
+      data.appointment.id,
+      data.appointment.version,
+      data.reminder,
+    );
+  const job = await appointmentEmailQueue.add("send", data, { jobId });
 
   return {
-    scheduled: true as const,
     jobId: job.id ?? jobId,
-    scheduledFor,
   };
 }
 
@@ -103,7 +86,7 @@ export async function closeAppointmentEmailQueue() {
   await appointmentEmailQueue.close();
 }
 
-function reminderTargetMs(reminder: ReminderType, startAt: string) {
+export function reminderTargetMs(reminder: ReminderType, startAt: string) {
   const startMs = new Date(startAt).getTime();
   switch (reminder) {
     case "before":
@@ -115,6 +98,6 @@ function reminderTargetMs(reminder: ReminderType, startAt: string) {
   }
 }
 
-function delayUntil(targetMs: number, nowMs: number) {
+export function delayUntil(targetMs: number, nowMs: number) {
   return Math.max(0, targetMs - nowMs);
 }

@@ -21,7 +21,6 @@
     "consumer:telegram": "node dist/scripts/telegram.consumer.js",
     "consumer:chat:dev": "tsx watch scripts/chat.consumer.ts",
     "consumer:chat": "node dist/scripts/chat.consumer.js",
-    "restate:register": "tsx scripts/register-restate.ts",
     "queue:clear": "tsx scripts/clear-queue.ts"
   },
   "dependencies": {
