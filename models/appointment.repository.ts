@@ -40,19 +40,6 @@ export async function findAppointmentById(id: string) {
   return doc ? toState(doc) : undefined;
 }
 
-/** Tìm appointment theo ID — throw not_found nếu không tìm thấy */
-export async function requireAppointmentById(id: string) {
-  const appointment = await findAppointmentById(id);
-  if (!appointment) {
-    throw new AppointmentRepositoryError(
-      `Appointment ${id} does not exist`,
-      "not_found",
-    );
-  }
-
-  return appointment;
-}
-
 /** Ghi đè toàn bộ dữ liệu appointment trong MongoDB (findOneAndUpdate) */
 export async function replaceAppointmentRecord(
   appointment: AppointmentStateType,
