@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { env } from "../../config/env.js";
 import {
   appointmentEmailQueue,
   EMAIL_QUEUE_NAME,
@@ -30,29 +29,14 @@ export const AppointmentEmailJobData = z.object({
 export type AppointmentEmailJobData = z.infer<typeof AppointmentEmailJobData>;
 type EmailReminderType = AppointmentEmailJobData["reminder"];
 
-export async function scheduleAppointmentEmail(input: {
+export async function enqueueImmediateEmail(input: {
   reminder: ReminderType;
+  scheduledFor: string;
   appointment: AppointmentEmailPayload;
-  now: string;
 }) {
-  const targetMs = reminderTargetMs(
-    input.reminder,
-    input.appointment.startAt,
-  );
-  const nowMs = new Date(input.now).getTime();
-  const scheduledFor = new Date(targetMs).toISOString();
-
-  if (targetMs <= nowMs) {
-    return {
-      scheduled: false as const,
-      scheduledFor,
-      reason: "scheduled time already passed",
-    };
-  }
-
   const data = AppointmentEmailJobData.parse({
     reminder: input.reminder,
-    scheduledFor,
+    scheduledFor: input.scheduledFor,
     appointment: input.appointment,
   });
   const jobId = appointmentEmailJobId(
@@ -60,16 +44,9 @@ export async function scheduleAppointmentEmail(input: {
     data.appointment.version,
     data.reminder,
   );
-  const job = await appointmentEmailQueue.add("send", data, {
-    jobId,
-    delay: delayUntil(targetMs, nowMs),
-  });
+  const job = await appointmentEmailQueue.add("send", data, { jobId });
 
-  return {
-    scheduled: true as const,
-    jobId: job.id ?? jobId,
-    scheduledFor,
-  };
+  return { jobId: job.id ?? jobId };
 }
 
 export async function removeAppointmentEmailJob(jobId: string) {
@@ -101,20 +78,4 @@ export function appointmentEmailJobId(
 
 export async function closeAppointmentEmailQueue() {
   await appointmentEmailQueue.close();
-}
-
-function reminderTargetMs(reminder: ReminderType, startAt: string) {
-  const startMs = new Date(startAt).getTime();
-  switch (reminder) {
-    case "before":
-      return startMs - env.reminderBeforeMs;
-    case "atTime":
-      return startMs;
-    case "after":
-      return startMs + env.reminderAfterMs;
-  }
-}
-
-function delayUntil(targetMs: number, nowMs: number) {
-  return Math.max(0, targetMs - nowMs);
 }

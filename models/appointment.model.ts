@@ -112,6 +112,12 @@ export const ReminderDeliveryResultInput = ReminderDeliveryRequest.extend({
   result: ReminderDeliveryResult,
 });
 
+export const SendReminderInput = z.object({
+  reminder: ReminderType,
+  version: z.number().int().min(1),
+  scheduledFor: z.string().datetime(),
+});
+
 export const AppointmentEventType = z.enum([
   "appointment.created",
   "appointment.updated",
@@ -152,6 +158,7 @@ export type ReminderDeliveryRequest = z.infer<
 export type ReminderDeliveryResultInput = z.infer<
   typeof ReminderDeliveryResultInput
 >;
+export type SendReminderInput = z.infer<typeof SendReminderInput>;
 export type AppointmentEventType = z.infer<typeof AppointmentEventType>;
 export type AppointmentEventEnvelope = z.infer<
   typeof AppointmentEventEnvelope
