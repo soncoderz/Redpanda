@@ -13,6 +13,10 @@ import {
   AppointmentEventEnvelope,
   type AppointmentEventEnvelope as AppointmentEventEnvelopeType,
 } from "../../models/appointment.model.js";
+import {
+  ChatMessage,
+  type ChatMessage as ChatMessageType,
+} from "../../models/chat.model.js";
 import { logger } from "../../utils/logger.js";
 
 const sasl: SASLOptions | undefined =
@@ -161,5 +165,47 @@ export async function runConsumer(options: {
       JSON.parse(message.value.toString("utf8")),
     );
     await options.onEvent(event);
+  });
+}
+
+export async function runChatConsumer(options: {
+  groupId: string;
+  onMessage: (message: ChatMessageType) => Promise<void>;
+  onShutdown?: () => Promise<void>;
+}) {
+  const consumer = await createKafkaConsumer(options.groupId);
+
+  logger.info(
+    { topic: env.kafkaChatTopic, groupId: options.groupId },
+    "Chat consumer started",
+  );
+
+  const shutdown = async (signal: NodeJS.Signals) => {
+    logger.info({ signal }, "Stopping chat consumer");
+    await consumer.disconnect();
+    await options.onShutdown?.();
+  };
+
+  process.once("SIGINT", (signal) => {
+    void shutdown(signal).then(() => process.exit(0));
+  });
+
+  process.once("SIGTERM", (signal) => {
+    void shutdown(signal).then(() => process.exit(0));
+  });
+
+  await consumer.subscribe({
+    topic: env.kafkaChatTopic,
+    fromBeginning: true,
+  });
+
+  await consumer.run({
+    eachMessage: async ({ message }) => {
+      if (!message.value) return;
+      const chatMessage = ChatMessage.parse(
+        JSON.parse(message.value.toString("utf8")),
+      );
+      await options.onMessage(chatMessage);
+    },
   });
 }

@@ -65,6 +65,7 @@ export const env = {
   kafkaTelegramGroupId:
     process.env.KAFKA_TELEGRAM_GROUP_ID ?? "appointment-telegram",
   kafkaChatTopic: process.env.KAFKA_CHAT_TOPIC ?? "chat-messages",
+  kafkaChatGroupId: process.env.KAFKA_CHAT_GROUP_ID ?? "chat-storage",
 
   telegramBotToken: emptyToUndefined(process.env.TELEGRAM_BOT_TOKEN),
   telegramChatId: emptyToUndefined(process.env.TELEGRAM_CHAT_ID),

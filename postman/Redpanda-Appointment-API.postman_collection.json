@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Redpanda Appointment API",
-    "description": "Restate + Hono + BullMQ appointment backend with email reminders via SendGrid",
+    "description": "Restate + Hono + BullMQ appointment backend with email reminders via SendGrid and real-time chat",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -13,6 +13,11 @@
     {
       "key": "appointmentId",
       "value": "",
+      "type": "string"
+    },
+    {
+      "key": "roomId",
+      "value": "general",
       "type": "string"
     }
   ],
@@ -290,6 +295,121 @@
               "path": ["api", "appointments", "{{appointmentId}}"]
             },
             "description": "Cancel an appointment. Cancels all pending reminder emails."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Send Message (Alice)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.test('Chat message sent', function () {",
+                  "        pm.expect(body.id).to.be.a('string');",
+                  "        pm.expect(body.roomId).to.eql(pm.collectionVariables.get('roomId'));",
+                  "        pm.expect(body.from).to.eql('Alice');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{roomId}}\",\n  \"from\": \"Alice\",\n  \"text\": \"Hello from Postman!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat/send",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chat", "send"]
+            },
+            "description": "Send a chat message as Alice. Message is published to Redpanda and broadcast via SSE to all listeners in the room."
+          }
+        },
+        {
+          "name": "Send Message (Bob)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.test('Chat message sent', function () {",
+                  "        pm.expect(body.id).to.be.a('string');",
+                  "        pm.expect(body.from).to.eql('Bob');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{roomId}}\",\n  \"from\": \"Bob\",\n  \"text\": \"Hey Alice, how are you?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat/send",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chat", "send"]
+            },
+            "description": "Send a chat message as Bob to the same room."
+          }
+        },
+        {
+          "name": "Stream Chat Messages (SSE)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/chat/stream/{{roomId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chat", "stream", "{{roomId}}"]
+            },
+            "description": "Server-Sent Events stream for real-time chat messages in a room. Events: connected (on join), message (each new message). Open in browser at /chat/{{roomId}} for full UI experience."
+          }
+        },
+        {
+          "name": "Chat UI (Browser)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chat/{{roomId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chat", "{{roomId}}"]
+            },
+            "description": "Open in browser to use the chat UI. Enter your name and start chatting. Open multiple tabs to simulate multiple users."
           }
         }
       ]
