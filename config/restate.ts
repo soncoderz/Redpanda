@@ -2,7 +2,7 @@ import * as restate from "@restatedev/restate-sdk/fetch";
 import * as clients from "@restatedev/restate-sdk-clients";
 
 import { env } from "./env.js";
-import { appointmentObject } from "../services/appointment/appointment.service.js";
+import { appointmentObject } from "../services/restate/appointment.handler.js";
 
 /** Client gọi tới Restate runtime (dùng trong controller và email worker) */
 export const restateClient = clients.connect({

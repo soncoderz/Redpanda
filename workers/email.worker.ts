@@ -2,7 +2,7 @@ import "dotenv/config";
 import { Worker, type Job } from "bullmq";
 
 import { env } from "../config/env.js";
-import type { AppointmentObject } from "../services/appointment/appointment.service.js";
+import type { AppointmentObject } from "../services/restate/appointment.handler.js";
 import {
   AppointmentEmailJobData,
   closeAppointmentEmailQueue,
@@ -11,7 +11,7 @@ import {
 import {
   sendAppointmentEmail,
   type EmailSendResult,
-} from "../services/mail/mailer.service.js";
+} from "../services/email/email.service.js";
 import { createRedisConnection } from "../config/redis.js";
 import { restateClient } from "../config/restate.js";
 import { logger } from "../utils/logger.js";

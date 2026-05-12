@@ -14,7 +14,7 @@ import { maintenanceQueue } from "./services/queue/maintenance-queue.service.js"
 import { restateEndpoint } from "./config/restate.js";
 import { kafkaProducerReady } from "./services/messaging/kafka.service.js";
 import { subscribeRealtimeEvents } from "./services/messaging/realtime.service.js";
-import { mongoReadyState } from "./services/db/mongodb.service.js";
+import { mongoReadyState } from "./services/database/mongodb.service.js";
 
 const encoder = new TextEncoder();
 

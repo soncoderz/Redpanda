@@ -137,7 +137,7 @@ services:
   email-worker:
     build: .
     restart: unless-stopped
-    command: ["node", "dist/scripts/email.worker.js"]
+    command: ["node", "dist/workers/email.worker.js"]
     environment:
       <<: *app-env
     depends_on:
@@ -150,7 +150,7 @@ services:
   maintenance-worker:
     build: .
     restart: unless-stopped
-    command: ["node", "dist/scripts/maintenance.worker.js"]
+    command: ["node", "dist/workers/maintenance.worker.js"]
     environment:
       <<: *app-env
     depends_on:
@@ -161,7 +161,7 @@ services:
   analytics-consumer:
     build: .
     restart: unless-stopped
-    command: ["node", "dist/scripts/analytics.consumer.js"]
+    command: ["node", "dist/workers/analytics.consumer.js"]
     environment:
       <<: *app-env
       KAFKA_ANALYTICS_GROUP_ID: appointment-analytics

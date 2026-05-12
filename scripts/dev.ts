@@ -19,11 +19,11 @@ const INFRA_PORTS = [
 // Danh sách process ứng dụng cần chạy song song (mỗi process có màu riêng)
 const APP_PROCESSES = [
   { name: "api", args: ["watch", "server.ts"], color: "\x1b[36m" },
-  { name: "email-worker", args: ["scripts/email.worker.ts"], color: "\x1b[33m" },
-  { name: "maintenance", args: ["scripts/maintenance.worker.ts"], color: "\x1b[32m" },
-  { name: "analytics", args: ["scripts/analytics.consumer.ts"], color: "\x1b[35m" },
-  { name: "telegram", args: ["scripts/telegram.consumer.ts"], color: "\x1b[34m" },
-  { name: "chat", args: ["scripts/chat.consumer.ts"], color: "\x1b[91m" },
+  { name: "email-worker", args: ["workers/email.worker.ts"], color: "\x1b[33m" },
+  { name: "maintenance", args: ["workers/maintenance.worker.ts"], color: "\x1b[32m" },
+  { name: "analytics", args: ["workers/analytics.consumer.ts"], color: "\x1b[35m" },
+  { name: "telegram", args: ["workers/telegram.consumer.ts"], color: "\x1b[34m" },
+  { name: "chat", args: ["workers/chat.consumer.ts"], color: "\x1b[91m" },
 ];
 
 /* ───────── State ───────── */

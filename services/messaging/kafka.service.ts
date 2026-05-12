@@ -113,13 +113,20 @@ export async function runConsumer(options: {
     void shutdown(signal).then(() => process.exit(0));
   });
 
-  // Subscribe và xử lý từng message: parse JSON → validate schema → gọi callback
-  await subscribeToAppointmentEvents(consumer, async ({ message }) => {
+  // Subscribe và xử lý từng message: parse JSON → validate schema → gọi callback (skip message lỗi)
+  await subscribeToAppointmentEvents(consumer, async ({ message, topic, partition }) => {
     if (!message.value) return;
-    const event = AppointmentEventEnvelope.parse(
+    const parsed = AppointmentEventEnvelope.safeParse(
       JSON.parse(message.value.toString("utf8")),
     );
-    await options.onEvent(event);
+    if (!parsed.success) {
+      logger.warn(
+        { topic, partition, offset: message.offset, errors: parsed.error.issues },
+        "Skipping invalid appointment event",
+      );
+      return;
+    }
+    await options.onEvent(parsed.data);
   });
 }
 
@@ -157,14 +164,21 @@ export async function runChatConsumer(options: {
     fromBeginning: true,
   });
 
-  // Xử lý từng message: parse JSON → validate schema → gọi callback
+  // Xử lý từng message: parse JSON → validate schema → gọi callback (skip message lỗi)
   await consumer.run({
-    eachMessage: async ({ message }) => {
+    eachMessage: async ({ message, topic, partition }) => {
       if (!message.value) return;
-      const chatMessage = ChatMessage.parse(
+      const parsed = ChatMessage.safeParse(
         JSON.parse(message.value.toString("utf8")),
       );
-      await options.onMessage(chatMessage);
+      if (!parsed.success) {
+        logger.warn(
+          { topic, partition, offset: message.offset, errors: parsed.error.issues },
+          "Skipping invalid chat message",
+        );
+        return;
+      }
+      await options.onMessage(parsed.data);
     },
   });
 }

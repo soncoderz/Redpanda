@@ -6,7 +6,7 @@ import { runConsumer } from "../services/messaging/kafka.service.js";
 import {
   connectMongo,
   disconnectMongo,
-} from "../services/db/mongodb.service.js";
+} from "../services/database/mongodb.service.js";
 import { logger } from "../utils/logger.js";
 
 // Kết nối MongoDB trước khi chạy consumer

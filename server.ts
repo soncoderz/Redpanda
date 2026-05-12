@@ -11,7 +11,7 @@ import {
 import {
   connectMongo,
   disconnectMongo,
-} from "./services/db/mongodb.service.js";
+} from "./services/database/mongodb.service.js";
 import { closeAppointmentEmailQueue } from "./services/queue/email-queue.service.js";
 import { closeMaintenanceQueue } from "./services/queue/maintenance-queue.service.js";
 import { logger } from "./utils/logger.js";
