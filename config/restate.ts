@@ -1,8 +1,8 @@
 import * as restate from "@restatedev/restate-sdk/fetch";
 import * as clients from "@restatedev/restate-sdk-clients";
 
-import { env } from "../../config/env.js";
-import { appointmentObject } from "../appointment/appointment.service.js";
+import { env } from "./env.js";
+import { appointmentObject } from "../services/appointment/appointment.service.js";
 
 export const restateClient = clients.connect({
   url: env.restateRuntimeUrl,

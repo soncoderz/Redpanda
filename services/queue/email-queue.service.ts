@@ -1,15 +1,17 @@
-import { Queue, type JobsOptions } from "bullmq";
 import { z } from "zod";
 
 import { env } from "../../config/env.js";
+import {
+  appointmentEmailQueue,
+  EMAIL_QUEUE_NAME,
+} from "../../config/queues.js";
 import type {
   AppointmentEmailPayload,
   ReminderType,
 } from "../../models/appointment.model.js";
 import { logger } from "../../utils/logger.js";
-import { createRedisConnection } from "../db/redis.service.js";
 
-export const EMAIL_QUEUE_NAME = env.emailQueueName;
+export { EMAIL_QUEUE_NAME, appointmentEmailQueue };
 
 export const AppointmentEmailJobData = z.object({
   reminder: z.enum(["before", "atTime", "after"]),
@@ -27,29 +29,6 @@ export const AppointmentEmailJobData = z.object({
 
 export type AppointmentEmailJobData = z.infer<typeof AppointmentEmailJobData>;
 type EmailReminderType = AppointmentEmailJobData["reminder"];
-
-const defaultJobOptions: JobsOptions = {
-  attempts: env.emailJobAttempts,
-  backoff: {
-    type: "exponential",
-    delay: env.emailJobBackoffMs,
-  },
-  removeOnComplete: {
-    age: env.emailJobRemoveCompleteAgeSeconds,
-    count: env.emailJobRemoveCompleteCount,
-  },
-  removeOnFail: {
-    age: env.emailJobRemoveFailAgeSeconds,
-  },
-};
-
-export const appointmentEmailQueue = new Queue<AppointmentEmailJobData>(
-  EMAIL_QUEUE_NAME,
-  {
-    connection: createRedisConnection(),
-    defaultJobOptions,
-  },
-);
 
 export async function scheduleAppointmentEmail(input: {
   reminder: ReminderType;

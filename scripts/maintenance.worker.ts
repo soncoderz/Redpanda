@@ -9,7 +9,7 @@ import {
   MaintenanceJobData,
   upsertCleanupScheduler,
 } from "../services/queue/maintenance-queue.service.js";
-import { createRedisConnection } from "../services/db/redis.service.js";
+import { createRedisConnection } from "../config/redis.js";
 import { logger } from "../utils/logger.js";
 
 const connection = createRedisConnection();

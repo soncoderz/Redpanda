@@ -12,8 +12,8 @@ import {
   sendAppointmentEmail,
   type EmailSendResult,
 } from "../services/mail/mailer.service.js";
-import { createRedisConnection } from "../services/db/redis.service.js";
-import { restateClient } from "../services/restate/restate.service.js";
+import { createRedisConnection } from "../config/redis.js";
+import { restateClient } from "../config/restate.js";
 import { logger } from "../utils/logger.js";
 
 const connection = createRedisConnection();

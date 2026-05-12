@@ -11,7 +11,7 @@ import { createAppointmentRoutes } from "./routes/appointment.routes.js";
 import { createChatRoutes } from "./routes/chat.routes.js";
 import { appointmentEmailQueue } from "./services/queue/email-queue.service.js";
 import { maintenanceQueue } from "./services/queue/maintenance-queue.service.js";
-import { restateEndpoint } from "./services/restate/restate.service.js";
+import { restateEndpoint } from "./config/restate.js";
 import { kafkaProducerReady } from "./services/messaging/kafka.service.js";
 import { subscribeRealtimeEvents } from "./services/messaging/realtime.service.js";
 import { mongoReadyState } from "./services/db/mongodb.service.js";
