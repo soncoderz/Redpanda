@@ -40,6 +40,8 @@ services:
       - start
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr internal://redpanda-0:9092,external://localhost:19092
+      - --set redpanda.superusers=["admin"]
+      - --set redpanda.enable_sasl=true
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
       - --advertise-pandaproxy-addr internal://redpanda-0:8082,external://localhost:18082
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
@@ -68,6 +70,11 @@ services:
       CONSOLE_CONFIG_FILE: |
         kafka:
           brokers: ["redpanda-0:9092"]
+          sasl:
+            enabled: true
+            mechanism: SCRAM-SHA-256
+            username: admin
+            password: admin-secret
         schemaRegistry:
           enabled: true
           urls: ["http://redpanda-0:8081"]
@@ -75,10 +82,48 @@ services:
           adminApi:
             enabled: true
             urls: ["http://redpanda-0:9644"]
+        kafkaConnect:
+          enabled: true
+          clusters:
+            - name: local
+              url: http://kafka-connect:8083
     ports:
       - "8081:8080"
     depends_on:
       - redpanda-0
+    networks:
+      - backend
+
+  kafka-connect:
+    build: ./connectors
+    restart: unless-stopped
+    hostname: kafka-connect
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: redpanda-0:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_GROUP_ID: appointment-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+      CONNECT_SASL_MECHANISM: SCRAM-SHA-256
+      CONNECT_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      CONNECT_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.scram.ScramLoginModule required username="kafka-connect" password="connect-secret";'
+      CONNECT_CONSUMER_SASL_MECHANISM: SCRAM-SHA-256
+      CONNECT_CONSUMER_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      CONNECT_CONSUMER_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.scram.ScramLoginModule required username="kafka-connect" password="connect-secret";'
+    ports:
+      - "8083:8083"
+    depends_on:
+      - redpanda-0
+      - mongo
     networks:
       - backend
 
@@ -109,6 +154,8 @@ services:
       MONGODB_URI: mongodb://mongo:27017/appointments
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: redpanda-0:9092
+      SCHEMA_REGISTRY_URL: http://redpanda-0:8081
+      KAFKA_CONNECT_URL: http://kafka-connect:8083
       KAFKA_APPOINTMENT_TOPIC: appointment-events
       KAFKA_TOPIC_REPLICATION_FACTOR: 1
       QUEUE_DASHBOARD_PATH: /admin/queues
@@ -158,15 +205,16 @@ services:
     networks:
       - backend
 
-  analytics-consumer:
-    build: .
-    restart: unless-stopped
-    command: ["node", "dist/workers/analytics.consumer.js"]
-    environment:
-      <<: *app-env
-      KAFKA_ANALYTICS_GROUP_ID: appointment-analytics
-    depends_on:
-      - mongo
-      - redpanda-0
-    networks:
-      - backend
+  # analytics-consumer disabled — thay bằng Kafka Connect MongoDB Sink connector
+  # analytics-consumer:
+  #   build: .
+  #   restart: unless-stopped
+  #   command: ["node", "dist/workers/analytics.consumer.js"]
+  #   environment:
+  #     <<: *app-env
+  #     KAFKA_ANALYTICS_GROUP_ID: appointment-analytics
+  #   depends_on:
+  #     - mongo
+  #     - redpanda-0
+  #   networks:
+  #     - backend

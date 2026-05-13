@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 /* ───────── Cấu hình ───────── */
 
 // Danh sách Docker container cần khởi động
-const DOCKER_SERVICES = ["mongo", "redis", "redpanda-0", "redpanda-console", "restate"];
+const DOCKER_SERVICES = ["mongo", "redis", "redpanda-0", "redpanda-console", "restate", "kafka-connect"];
 
 // Các port cần chờ sẵn sàng trước khi chạy ứng dụng
 const INFRA_PORTS = [
@@ -14,6 +14,7 @@ const INFRA_PORTS = [
   { port: 6379, name: "Redis" },
   { port: 19092, name: "Redpanda" },
   { port: 18080, name: "Restate" },
+  { port: 8083, name: "Kafka Connect" },
 ];
 
 // Danh sách process ứng dụng cần chạy song song (mỗi process có màu riêng)
@@ -21,7 +22,8 @@ const APP_PROCESSES = [
   { name: "api", args: ["watch", "server.ts"], color: "\x1b[36m" },
   { name: "email-worker", args: ["workers/email.worker.ts"], color: "\x1b[33m" },
   { name: "maintenance", args: ["workers/maintenance.worker.ts"], color: "\x1b[32m" },
-  { name: "analytics", args: ["workers/analytics.consumer.ts"], color: "\x1b[35m" },
+  // analytics consumer disabled — thay bằng Kafka Connect MongoDB Sink
+  // { name: "analytics", args: ["workers/analytics.consumer.ts"], color: "\x1b[35m" },
   { name: "telegram", args: ["workers/telegram.consumer.ts"], color: "\x1b[34m" },
   { name: "chat", args: ["workers/chat.consumer.ts"], color: "\x1b[91m" },
 ];
@@ -62,6 +64,16 @@ try {
   // Bước 5: Đăng ký endpoint với Restate Admin API
   log("Registering Restate endpoint...");
   await runOnce("tsx", ["scripts/register-restate.ts"]);
+
+  // Bước 6: Đăng ký JSON schemas lên Schema Registry
+  log("Registering schemas...");
+  await runOnce("tsx", ["scripts/register-schemas.ts"]);
+
+  // Bước 7: Đăng ký Kafka Connect connectors (non-fatal — Connect khởi động chậm)
+  log("Registering connectors...");
+  await runOnce("tsx", ["scripts/register-connectors.ts"]).catch((err) => {
+    log(`⚠ Connector registration failed (run 'npm run connect:register' manually): ${err.message}`);
+  });
 
   log(`${BOLD}All services running!${R} Press Ctrl+C to stop.`);
 } catch (error: any) {

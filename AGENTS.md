@@ -1,4 +1,4 @@
-# CLAUDE.md — Project Rules
+# AGENTS.md — Project Rules
 
 ## Overview
 
@@ -58,29 +58,7 @@ Tech stack: TypeScript, Hono, Restate SDK, BullMQ, KafkaJS, Mongoose, Zod, SendG
 - File pattern: `workers/<name>.consumer.ts`
 - Dùng `runConsumer()` hoặc `runChatConsumer()` wrapper từ `kafka.service.ts`
 - Mỗi consumer có `groupId` riêng — nhận bản sao độc lập của events
-- Decode Confluent wire format (Schema Registry) → validate Zod → skip invalid messages
-- Backward compatible: fallback sang JSON thuần nếu message không có magic byte
-
-### Schema Registry (Redpanda built-in)
-
-- URL: `http://localhost:18081` (đã bật sẵn trong Redpanda)
-- Dùng `@kafkajs/confluent-schema-registry` — Confluent-compatible
-- JSON Schema files: `schemas/<name>.schema.json`
-- Subject convention: `<topic-name>-value` (vd: `appointment-events-value`)
-- Producer: register schema → encode Confluent wire format (`[0x00][schema ID 4 bytes][JSON]`)
-- Consumer: decode wire format → validate Zod (double validation)
-- Schema ID cache trong `config/schema-registry.ts` — tránh gọi registry mỗi lần publish
-- Register schemas: `npm run schema:register`
-
-### Kafka Connect (MongoDB Sink)
-
-- Container riêng: `kafka-connect` (Confluent CP base + MongoDB connector plugin)
-- Connector configs: `connectors/*.json`
-- MongoDB Sink Connector: tự động ghi event từ `appointment-events` → MongoDB `event_logs`
-- Dead letter queue: `appointment-events-dlq` cho messages lỗi
-- Register connectors: `npm run connect:register`
-- Quản lý qua Redpanda Console → tab Connect
-- REST API: `http://localhost:8083/connectors`
+- Parse JSON → validate Zod → skip invalid messages (không throw)
 
 ### Repository Pattern (MongoDB)
 - File pattern: `models/<name>.repository.ts`
@@ -92,38 +70,17 @@ Tech stack: TypeScript, Hono, Restate SDK, BullMQ, KafkaJS, Mongoose, Zod, SendG
 - Event envelope: `{ eventId, type, appointmentId, version, occurredAt, payload }`
 - Gọi bên trong `ctx.run()` để replay-safe
 
-### Redpanda ACL (Access Control)
-
-- Script setup: `scripts/setup-acl.sh` — tạo SASL users + ACL rules
-- Chạy trong container: `docker exec -it appointment-backend-redpanda-0-1 bash < scripts/setup-acl.sh`
-- Users: `admin` (superuser), `api-service` (producer), `telegram-consumer`, `chat-consumer`, `kafka-connect`
-- Mỗi user chỉ truy cập được topic/group được phép (principle of least privilege)
-- Bật bằng cách set `KAFKA_USERNAME`/`KAFKA_PASSWORD` trong `.env` cho từng service
-- Code đã hỗ trợ SASL/SCRAM trong `config/kafka.ts` — tự bật khi có username/password
-
-### Consumer Lag Monitoring
-
-- Xem trực tiếp trên **Redpanda Console** → tab **Consumer Groups**
-- Mỗi consumer group hiển thị: current offset, end offset, lag (số message chưa xử lý)
-- Consumer groups trong dự án:
-  - `appointment-telegram` — Telegram consumer
-  - `chat-storage` — Chat consumer
-  - `appointment-connect` — Kafka Connect MongoDB Sink
-  - `appointment-analytics` — Analytics consumer (disabled, thay bằng Kafka Connect)
-
 ---
 
 ## Project Structure
 
 ```
-config/          — env vars, Redis, Kafka, Restate, Schema Registry, BullMQ queue config
-connectors/      — Kafka Connect: Dockerfile + connector JSON configs
+config/          — env vars, Redis, Kafka, Restate, BullMQ queue config
 controllers/     — Hono request handlers (parse input, gọi Restate, trả response)
 middlewares/     — Hono middleware (error handling)
 models/          — Zod schemas, Mongoose schemas, repository functions
 routes/          — Hono router definitions
-schemas/         — JSON Schema files cho Schema Registry (appointment-event, chat-message)
-scripts/         — CLI scripts (dev, register Restate/schemas/connectors, clear queue)
+scripts/         — CLI scripts (dev orchestrator, register Restate, clear queue)
 services/
   database/      — MongoDB connection
   email/         — SendGrid integration
@@ -165,8 +122,8 @@ workers/         — BullMQ workers + Kafka consumers (chạy process riêng)
 ## Running the Project
 
 ```bash
-# Start infrastructure (MongoDB, Redis, Redpanda, Restate, Kafka Connect)
-docker compose up -d mongo redis redpanda-0 restate kafka-connect
+# Start infrastructure (MongoDB, Redis, Redpanda, Restate)
+docker compose up -d mongo redis redpanda-0 restate
 
 # Dev mode (starts all services + workers)
 npm run dev
@@ -177,10 +134,6 @@ npm run worker:email:dev     # Email worker
 npm run consumer:telegram:dev # Telegram consumer
 npm run consumer:analytics:dev # Analytics consumer
 
-# Schema Registry & Kafka Connect
-npm run schema:register      # Register JSON schemas lên Redpanda
-npm run connect:register     # Register MongoDB Sink connector
-
 # Utils
 npm run restate:register     # Register Restate endpoint
 npm run queue:clear          # Clear BullMQ queues
@@ -188,10 +141,7 @@ npm run typecheck            # TypeScript check
 ```
 
 ## Key URLs (dev)
-
 - API: http://localhost:9080
 - BullMQ Dashboard: http://localhost:9080/admin/queues
 - Restate Admin: http://localhost:19070
 - Redpanda Console: http://localhost:8081
-- Schema Registry: http://localhost:18081
-- Kafka Connect REST: http://localhost:8083

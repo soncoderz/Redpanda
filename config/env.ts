@@ -60,6 +60,14 @@ export const env = {
   sendgridFromEmail: process.env.SENDGRID_FROM_EMAIL ?? "",
   sendgridFromName: process.env.SENDGRID_FROM_NAME ?? "Appointment Reminder",
 
+  // --- Schema Registry: validate event schema trước khi publish/consume ---
+  schemaRegistryUrl:
+    process.env.SCHEMA_REGISTRY_URL ?? "http://localhost:18081",
+
+  // --- Kafka Connect: sink connectors (MongoDB, etc.) ---
+  kafkaConnectUrl:
+    process.env.KAFKA_CONNECT_URL ?? "http://localhost:8083",
+
   // --- Kafka/Redpanda: event streaming ---
   kafkaClientId: process.env.KAFKA_CLIENT_ID ?? "appointment-service",
   kafkaBrokers: readCsvEnv("KAFKA_BROKERS", ["localhost:19092"]),

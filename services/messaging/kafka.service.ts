@@ -6,6 +6,7 @@ import {
 
 import { env } from "../../config/env.js";
 import { kafka } from "../../config/kafka.js";
+import { decodeWithSchema } from "../../config/schema-registry.js";
 import {
   AppointmentEventEnvelope,
   type AppointmentEventEnvelope as AppointmentEventEnvelopeType,
@@ -113,12 +114,25 @@ export async function runConsumer(options: {
     void shutdown(signal).then(() => process.exit(0));
   });
 
-  // Subscribe và xử lý từng message: parse JSON → validate schema → gọi callback (skip message lỗi)
+  // Subscribe và xử lý từng message: decode Schema Registry wire format → validate Zod → gọi callback
+  // Fallback: nếu message không có magic byte (0x00) → parse JSON thuần (backward compatible)
   await subscribeToAppointmentEvents(consumer, async ({ message, topic, partition }) => {
     if (!message.value) return;
-    const parsed = AppointmentEventEnvelope.safeParse(
-      JSON.parse(message.value.toString("utf8")),
-    );
+
+    let decoded: unknown;
+    try {
+      decoded = isConfluentWireFormat(message.value)
+        ? await decodeWithSchema(message.value)
+        : JSON.parse(message.value.toString("utf8"));
+    } catch (error) {
+      logger.warn(
+        { topic, partition, offset: message.offset, err: error },
+        "Failed to decode appointment event",
+      );
+      return;
+    }
+
+    const parsed = AppointmentEventEnvelope.safeParse(decoded);
     if (!parsed.success) {
       logger.warn(
         { topic, partition, offset: message.offset, errors: parsed.error.issues },
@@ -164,13 +178,25 @@ export async function runChatConsumer(options: {
     fromBeginning: true,
   });
 
-  // Xử lý từng message: parse JSON → validate schema → gọi callback (skip message lỗi)
+  // Xử lý từng message: decode wire format → validate Zod → gọi callback (skip message lỗi)
   await consumer.run({
     eachMessage: async ({ message, topic, partition }) => {
       if (!message.value) return;
-      const parsed = ChatMessage.safeParse(
-        JSON.parse(message.value.toString("utf8")),
-      );
+
+      let decoded: unknown;
+      try {
+        decoded = isConfluentWireFormat(message.value)
+          ? await decodeWithSchema(message.value)
+          : JSON.parse(message.value.toString("utf8"));
+      } catch (error) {
+        logger.warn(
+          { topic, partition, offset: message.offset, err: error },
+          "Failed to decode chat message",
+        );
+        return;
+      }
+
+      const parsed = ChatMessage.safeParse(decoded);
       if (!parsed.success) {
         logger.warn(
           { topic, partition, offset: message.offset, errors: parsed.error.issues },
@@ -181,4 +207,9 @@ export async function runChatConsumer(options: {
       await options.onMessage(parsed.data);
     },
   });
+}
+
+/** Kiểm tra message có đúng Confluent wire format không (magic byte 0x00 ở đầu) */
+function isConfluentWireFormat(buffer: Buffer): boolean {
+  return buffer.length >= 5 && buffer[0] === 0;
 }

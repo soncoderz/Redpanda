@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "appointment-event-envelope",
+  "title": "AppointmentEventEnvelope",
+  "description": "Envelope chứa event khi publish lên Kafka topic appointment-events",
+  "type": "object",
+  "required": ["eventId", "type", "appointmentId", "version", "occurredAt", "payload"],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "UUID duy nhất cho mỗi event"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "appointment.created",
+        "appointment.updated",
+        "appointment.cancelled",
+        "reminder.sent"
+      ],
+      "description": "Loại event"
+    },
+    "appointmentId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ID appointment liên quan"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version của appointment tại thời điểm event xảy ra"
+    },
+    "occurredAt": {
+      "type": "string",
+      "description": "ISO 8601 timestamp khi event xảy ra"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Dữ liệu chi tiết của event (khác nhau tùy type)"
+    }
+  },
+  "additionalProperties": false
+}

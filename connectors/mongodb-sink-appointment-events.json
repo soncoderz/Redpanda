@@ -1,0 +1,37 @@
+{
+  "name": "mongodb-appointment-events-sink",
+  "config": {
+    "connector.class": "com.mongodb.kafka.connect.MongoSinkConnector",
+    "tasks.max": "1",
+
+    "topics": "appointment-events",
+    "connection.uri": "mongodb://mongo:27017",
+    "database": "Redpanda",
+    "collection": "event_logs",
+
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": false,
+
+    "document.id.strategy": "com.mongodb.kafka.connect.sink.processor.id.strategy.ProvidedInValueStrategy",
+    "document.id.strategy.overwrite.existing": false,
+    "document.id.strategy.uuid.format": "string",
+
+    "transforms": "extractId,addProcessedAt",
+
+    "transforms.extractId.type": "org.apache.kafka.connect.transforms.ValueToKey",
+    "transforms.extractId.fields": "eventId",
+
+    "transforms.addProcessedAt.type": "org.apache.kafka.connect.transforms.InsertField$Value",
+    "transforms.addProcessedAt.timestamp.field": "processedAt",
+
+    "writemodel.strategy": "com.mongodb.kafka.connect.sink.writemodel.strategy.InsertOneDefaultStrategy",
+
+    "mongo.errors.tolerance": "data",
+    "mongo.errors.log.enable": true,
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "appointment-events-dlq",
+    "errors.deadletterqueue.topic.replication.factor": 1,
+    "errors.deadletterqueue.context.headers.enable": true
+  }
+}
