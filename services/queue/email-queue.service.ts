@@ -9,7 +9,6 @@ import type {
   AppointmentEmailPayload,
   ReminderType,
 } from "../../models/appointment.model.js";
-import { logger } from "../../utils/logger.js";
 
 export { EMAIL_QUEUE_NAME, appointmentEmailQueue };
 
@@ -54,27 +53,8 @@ export async function enqueueImmediateEmail(input: {
   return { jobId: job.id ?? jobId };
 }
 
-/** Xoá job khỏi queue (dùng khi update/cancel appointment) */
-export async function removeAppointmentEmailJob(jobId: string) {
-  const job = await appointmentEmailQueue.getJob(jobId);
-  if (!job) {
-    return { removed: false, reason: "job not found" };
-  }
-
-  try {
-    await job.remove();
-    return { removed: true };
-  } catch (error) {
-    logger.warn(
-      { jobId, error: error instanceof Error ? error.message : String(error) },
-      "Unable to remove reminder job",
-    );
-    return { removed: false, reason: "job already active or completed" };
-  }
-}
-
 /** Tạo job ID deterministic: appointment-email-{id}-{version}-{reminder} */
-export function appointmentEmailJobId(
+function appointmentEmailJobId(
   appointmentId: string,
   version: number,
   reminder: EmailReminderType,

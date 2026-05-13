@@ -1,12 +1,11 @@
 import { AppointmentModel, type AppointmentRecord } from "./appointment.schema.js";
 import {
   AppointmentState,
-  type AppointmentPatchInput,
   type AppointmentState as AppointmentStateType,
 } from "./appointment.model.js";
 
 /** Lỗi repository: not_found hoặc duplicate */
-export class AppointmentRepositoryError extends Error {
+class AppointmentRepositoryError extends Error {
   constructor(
     message: string,
     public readonly code: "not_found" | "duplicate",
@@ -80,17 +79,6 @@ export async function listAppointments(input: {
     .lean();
 
   return docs.map(toState);
-}
-
-/** Áp dụng patch input vào appointment (merge fields) */
-export function applyAppointmentPatch(
-  appointment: AppointmentStateType,
-  patch: AppointmentPatchInput,
-) {
-  return {
-    ...appointment,
-    ...patch,
-  };
 }
 
 /** Chuyển AppointmentState → MongoDB record (id → appointmentId) */

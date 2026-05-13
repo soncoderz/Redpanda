@@ -90,7 +90,7 @@ env.publicRestateEndpoint =
   process.env.PUBLIC_RESTATE_ENDPOINT ?? `http://localhost:${env.port}/restate`;
 
 /** Đọc biến môi trường dạng số nguyên dương, trả fallback nếu không hợp lệ */
-export function readPositiveIntEnv(name: string, fallback: number) {
+function readPositiveIntEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);
 
   if (Number.isInteger(value) && value > 0) {
@@ -101,7 +101,7 @@ export function readPositiveIntEnv(name: string, fallback: number) {
 }
 
 /** Đọc biến môi trường dạng số nguyên >= 0, trả fallback nếu không hợp lệ */
-export function readNonNegativeIntEnv(name: string, fallback: number) {
+function readNonNegativeIntEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);
 
   if (Number.isInteger(value) && value >= 0) {

@@ -397,9 +397,4 @@ function validateReminder(
   return undefined;
 }
 
-/** Chuyển error thành format { status: "failed", error: string } để record vào DB */
-export function toRecordableFailure(error: unknown) {
-  return { status: "failed" as const, error: error instanceof Error ? error.message : String(error) };
-}
-
 export type AppointmentObject = typeof appointmentObject;
