@@ -177,7 +177,7 @@ Redpanda topic: appointment-events
 
 Giống như **máy photocopy tự động** — cứ có event mới là tự sao chép vào sổ lưu trữ.
 
-Thay thế cho `analytics.consumer.ts` (file cũ đã tắt) — làm cùng 1 việc nhưng không cần code.
+Kafka Connect là đường xử lý duy nhất ghi `appointment-events` vào MongoDB `event_logs`.
 
 ---
 
@@ -270,7 +270,7 @@ Bước 5: Đến 9:59 (Restate tự gọi sendReminder):
 ```
 📁 config/          Cấu hình kết nối (MongoDB, Redis, Kafka, Restate)
 📁 controllers/     Nhận request từ client, validate, gọi Restate
-📁 models/          Định nghĩa dữ liệu (Appointment, Chat, EventLog)
+📁 models/          Định nghĩa dữ liệu (Appointment, Chat)
 📁 routes/          Đăng ký URL endpoints
 📁 services/
    📁 restate/      Bộ não xử lý: tạo/sửa/hủy lịch, gửi reminder

@@ -76,8 +76,6 @@ export const env = {
   kafkaPassword: emptyToUndefined(process.env.KAFKA_PASSWORD),
   kafkaAppointmentTopic:
     process.env.KAFKA_APPOINTMENT_TOPIC ?? "appointment-events",
-  kafkaAnalyticsGroupId:
-    process.env.KAFKA_ANALYTICS_GROUP_ID ?? "appointment-analytics",
   kafkaTopicPartitions: readPositiveIntEnv("KAFKA_TOPIC_PARTITIONS", 3),
   kafkaTopicReplicationFactor: readPositiveIntEnv(
     "KAFKA_TOPIC_REPLICATION_FACTOR",

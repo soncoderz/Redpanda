@@ -40,8 +40,10 @@ services:
       - start
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr internal://redpanda-0:9092,external://localhost:19092
+      
       - --set redpanda.superusers=["admin"]
       - --set redpanda.enable_sasl=true
+
       - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
       - --advertise-pandaproxy-addr internal://redpanda-0:8082,external://localhost:18082
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
@@ -208,16 +210,3 @@ services:
     networks:
       - backend
 
-  # analytics-consumer disabled — thay bằng Kafka Connect MongoDB Sink connector
-  # analytics-consumer:
-  #   build: .
-  #   restart: unless-stopped
-  #   command: ["node", "dist/workers/analytics.consumer.js"]
-  #   environment:
-  #     <<: *app-env
-  #     KAFKA_ANALYTICS_GROUP_ID: appointment-analytics
-  #   depends_on:
-  #     - mongo
-  #     - redpanda-0
-  #   networks:
-  #     - backend

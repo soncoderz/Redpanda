@@ -3,16 +3,10 @@ import "dotenv/config";
 import { Kafka, logLevel } from "kafkajs";
 
 const brokers = readCsvEnv("KAFKA_BROKERS", ["localhost:19092"]);
-// const username = process.env.KAFKA_TEST_USERNAME ?? "chat-consumer";
-// const password = process.env.KAFKA_TEST_PASSWORD ?? "chat-secret";
-// const topic = process.env.KAFKA_TEST_TOPIC ?? "chat-messages";
-// const groupId = process.env.KAFKA_TEST_GROUP_ID ?? "chat-storage";
-
-const username = process.env.KAFKA_TEST_USERNAME ?? "api-service";
-const password = process.env.KAFKA_TEST_PASSWORD ?? "api-service-secret";
+const username = process.env.KAFKA_TEST_USERNAME ?? "chat-consumer";
+const password = process.env.KAFKA_TEST_PASSWORD ?? "chat-secret";
 const topic = process.env.KAFKA_TEST_TOPIC ?? "appointment-events";
-const groupId = process.env.KAFKA_TEST_GROUP_ID ?? "appointment-analytics";
-
+const groupId = process.env.KAFKA_TEST_GROUP_ID ?? "chat-storage";
 
 const kafka = new Kafka({
   clientId: "unauthorized-consumer-test",

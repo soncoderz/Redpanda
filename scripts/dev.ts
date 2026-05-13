@@ -22,8 +22,6 @@ const APP_PROCESSES = [
   { name: "api", args: ["watch", "server.ts"], color: "\x1b[36m" },
   { name: "email-worker", args: ["workers/email.worker.ts"], color: "\x1b[33m" },
   { name: "maintenance", args: ["workers/maintenance.worker.ts"], color: "\x1b[32m" },
-  // analytics consumer disabled — thay bằng Kafka Connect MongoDB Sink
-  // { name: "analytics", args: ["workers/analytics.consumer.ts"], color: "\x1b[35m" },
   { name: "telegram", args: ["workers/telegram.consumer.ts"], color: "\x1b[34m" },
   { name: "chat", args: ["workers/chat.consumer.ts"], color: "\x1b[91m" },
 ];

@@ -132,7 +132,6 @@ npm run dev
 npm run dev:app              # API server only
 npm run worker:email:dev     # Email worker
 npm run consumer:telegram:dev # Telegram consumer
-npm run consumer:analytics:dev # Analytics consumer
 
 # Utils
 npm run restate:register     # Register Restate endpoint

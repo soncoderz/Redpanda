@@ -36,7 +36,7 @@ rpk acl create --allow-principal User:api-service \
 
 rpk acl create --allow-principal User:api-service \
   --operation read \
-  --group appointment-telegram --group chat-storage --group appointment-analytics \
+  --group appointment-telegram --group chat-storage \
   --brokers $BROKER $SASL_FLAGS
 
 # --- telegram-consumer: chỉ đọc appointment-events ---

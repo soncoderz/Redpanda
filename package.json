@@ -14,8 +14,6 @@
     "worker:email": "node dist/workers/email.worker.js",
     "worker:maintenance:dev": "tsx watch workers/maintenance.worker.ts",
     "worker:maintenance": "node dist/workers/maintenance.worker.js",
-    "consumer:analytics:dev": "tsx watch workers/analytics.consumer.ts",
-    "consumer:analytics": "node dist/workers/analytics.consumer.js",
     "consumer:telegram:dev": "tsx watch workers/telegram.consumer.ts",
     "consumer:telegram": "node dist/workers/telegram.consumer.js",
     "consumer:chat:dev": "tsx watch workers/chat.consumer.ts",

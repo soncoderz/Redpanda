@@ -109,7 +109,6 @@ Tech stack: TypeScript, Hono, Restate SDK, BullMQ, KafkaJS, Mongoose, Zod, SendG
   - `appointment-telegram` — Telegram consumer
   - `chat-storage` — Chat consumer
   - `appointment-connect` — Kafka Connect MongoDB Sink
-  - `appointment-analytics` — Analytics consumer (disabled, thay bằng Kafka Connect)
 
 ---
 
@@ -175,7 +174,6 @@ npm run dev
 npm run dev:app              # API server only
 npm run worker:email:dev     # Email worker
 npm run consumer:telegram:dev # Telegram consumer
-npm run consumer:analytics:dev # Analytics consumer
 
 # Schema Registry & Kafka Connect
 npm run schema:register      # Register JSON schemas lên Redpanda

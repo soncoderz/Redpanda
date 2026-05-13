@@ -85,7 +85,7 @@ async function subscribeToAppointmentEvents(
   await consumer.run({ eachMessage });
 }
 
-/** Chạy consumer đọc appointment events từ Kafka — dùng cho analytics và telegram consumer */
+/** Chạy consumer đọc appointment events từ Kafka — dùng cho telegram consumer */
 export async function runConsumer(options: {
   groupId: string;
   onEvent: (event: AppointmentEventEnvelopeType) => Promise<void>;
