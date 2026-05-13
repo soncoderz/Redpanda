@@ -119,6 +119,9 @@ services:
       CONNECT_CONSUMER_SASL_MECHANISM: SCRAM-SHA-256
       CONNECT_CONSUMER_SECURITY_PROTOCOL: SASL_PLAINTEXT
       CONNECT_CONSUMER_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.scram.ScramLoginModule required username="kafka-connect" password="connect-secret";'
+      CONNECT_PRODUCER_SASL_MECHANISM: SCRAM-SHA-256
+      CONNECT_PRODUCER_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      CONNECT_PRODUCER_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.scram.ScramLoginModule required username="kafka-connect" password="connect-secret";'
     ports:
       - "8083:8083"
     depends_on:

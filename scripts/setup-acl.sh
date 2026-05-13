@@ -28,10 +28,15 @@ rpk acl user create kafka-connect -p connect-secret --mechanism SCRAM-SHA-256 --
 echo ""
 echo "=== Setting ACL rules ==="
 
-# --- api-service: producer cho appointment-events và chat-messages ---
+# --- api-service: producer + consumer (dev mode dùng chung 1 user) ---
 rpk acl create --allow-principal User:api-service \
-  --operation write --operation describe --operation create \
+  --operation write --operation read --operation describe --operation create \
   --topic appointment-events --topic chat-messages \
+  --brokers $BROKER $SASL_FLAGS
+
+rpk acl create --allow-principal User:api-service \
+  --operation read \
+  --group appointment-telegram --group chat-storage --group appointment-analytics \
   --brokers $BROKER $SASL_FLAGS
 
 # --- telegram-consumer: chỉ đọc appointment-events ---
