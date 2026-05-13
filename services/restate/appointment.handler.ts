@@ -24,6 +24,9 @@ import { reminderTargetMs, REMINDER_TYPES } from "../../utils/appointment.utils.
 
 const RETRY = { maxRetryAttempts: 5 };
 const STATE_KEY = "appointment-workflow";
+const INVOCATIONS_KEY = "reminder-invocations";
+
+type ReminderInvocations = Record<ReminderType, string>;
 
 /*
  * ╔══════════════════════════════════════════════════════════════════════════╗
@@ -42,7 +45,7 @@ const STATE_KEY = "appointment-workflow";
  * ║     a) Load appointment từ MongoDB (ctx.run → findAppointmentById)     ║
  * ║     b) Validate trạng thái                                             ║
  * ║     c) Tạo state mới với version tăng                                  ║
- * ║     d) Đặt lịch nhắc qua Restate delayed call (scheduleReminders)     ║
+ * ║     d) Cancel invocation cũ + đặt lịch nhắc mới (scheduleReminders)   ║
  * ║     e) Lưu MongoDB (ctx.run → createRecord/replaceRecord)             ║
  * ║     f) Publish event Kafka (ctx.run → publishAppointmentEvent)         ║
  * ║     g) Set tóm tắt vào Restate K/V (setState)                         ║
@@ -56,10 +59,10 @@ const STATE_KEY = "appointment-workflow";
  * ║     b) Nếu shouldSend=true → gửi email qua SendGrid                   ║
  * ║     c) Gọi recordReminderResult → Restate ghi kết quả                 ║
  * ║                                                                        ║
- * ║  Version-based staleness:                                              ║
- * ║  Khi appointment được update/cancel, version tăng lên.                 ║
- * ║  Các delayed call cũ mang version cũ → tự động bị skip                ║
- * ║  khi so sánh version không khớp, không cần cancel thủ công.            ║
+ * ║  Explicit cancel:                                                      ║
+ * ║  Khi update/cancel, invocation IDs cũ được đọc từ Restate K/V          ║
+ * ║  → ctx.cancel() huỷ từng invocation → schedule mới (nếu update)        ║
+ * ║  → Restate chỉ giữ đúng 3 invocation active tại mọi thời điểm.        ║
  * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 export const appointmentObject = restate.object({
@@ -70,11 +73,8 @@ export const appointmentObject = restate.object({
      *  CREATE — Tạo lịch hẹn mới
      *
      *  Flow: Load MongoDB → Idempotency check → Tạo state v1
-     *        → Schedule 3 reminder (before/atTime/after)
+     *        → Schedule 3 reminder (before/atTime/after) + lưu invocation IDs
      *        → Lưu MongoDB → Publish Kafka → Set Restate K/V
-     *
-     *  Idempotency: Nếu appointment đã tồn tại với cùng idempotencyKey
-     *  → trả về bản cũ thay vì throw error (safe retry).
      * ═══════════════════════════════════════════════════════════════════════ */
     create: restate.createObjectHandler(
       {
@@ -85,12 +85,10 @@ export const appointmentObject = restate.object({
         // B1: Load từ MongoDB — kiểm tra đã tồn tại chưa
         const existing = await ctx.run("load", () => findAppointmentById(ctx.key), RETRY);
         if (existing) {
-          // Idempotent: cùng key hoặc không có key → trả về bản cũ
           if (!input.idempotencyKey || existing.idempotencyKey === input.idempotencyKey) {
             setState(ctx, existing);
             return existing;
           }
-          // Khác idempotencyKey → conflict thật sự
           throw new restate.TerminalError(`Appointment ${ctx.key} already exists for a different idempotency key`);
         }
 
@@ -109,18 +107,17 @@ export const appointmentObject = restate.object({
           history: [{ type: "created", at: now, version: 1, details: { appointment: input } }],
         };
 
-        // B4: Đặt 3 delayed call cho reminder (before/atTime/after)
-        //     Mỗi call mang version=1, khi appointment bị update → version tăng → call cũ tự skip
-        scheduleReminders(ctx, appointment);
+        // B4: Đặt 3 delayed call + lưu invocation IDs vào Restate K/V
+        await scheduleReminders(ctx, appointment);
 
-        // B5: Lưu vào MongoDB (ctx.run đảm bảo side-effect chỉ chạy 1 lần khi replay)
+        // B5: Lưu vào MongoDB
         const saved = await ctx.run(
           "persist",
           () => createAppointmentRecord(appointment),
           RETRY,
         );
 
-        // B6: Publish event ra Kafka cho các consumer (analytics, telegram, SSE)
+        // B6: Publish event ra Kafka
         await ctx.run("publish appointment.created", () => publishAppointmentEvent({
           eventId: `appointment.created:${saved.id}:${saved.version}`,
           type: "appointment.created",
@@ -130,7 +127,7 @@ export const appointmentObject = restate.object({
           payload: { appointment: snapshot(saved) },
         }), RETRY);
 
-        // B7: Lưu tóm tắt vào Restate K/V store (id, version, status, updatedAt)
+        // B7: Lưu tóm tắt vào Restate K/V
         setState(ctx, saved);
         return saved;
       },
@@ -138,8 +135,6 @@ export const appointmentObject = restate.object({
 
     /* ═══════════════════════════════════════════════════════════════════════
      *  GET — Lấy thông tin appointment
-     *
-     *  Flow: Load MongoDB → Trả về (đồng thời sync Restate K/V)
      * ═══════════════════════════════════════════════════════════════════════ */
     get: restate.createObjectHandler(
       { output: restate.serde.schema(AppointmentState) },
@@ -156,12 +151,11 @@ export const appointmentObject = restate.object({
     /* ═══════════════════════════════════════════════════════════════════════
      *  UPDATE — Cập nhật lịch hẹn
      *
-     *  Flow: Load MongoDB → Validate (tồn tại? chưa cancel?)
-     *        → Tăng version → Reset reminders → Schedule mới
-     *        → Lưu MongoDB → Publish Kafka → Set Restate K/V
+     *  Flow: Load → Validate → Cancel 3 invocation cũ → Tăng version
+     *        → Schedule 3 invocation mới → Persist → Publish → setState
      *
-     *  Khi version tăng, các reminder cũ (mang version cũ) sẽ tự động
-     *  bị skip trong sendReminder nhờ version mismatch check.
+     *  Explicit cancel: đọc invocation IDs từ Restate K/V → ctx.cancel()
+     *  → Restate huỷ delayed call, không để tích lũy invocation rác.
      * ═══════════════════════════════════════════════════════════════════════ */
     update: restate.createObjectHandler(
       {
@@ -169,7 +163,6 @@ export const appointmentObject = restate.object({
         output: restate.serde.schema(AppointmentState),
       },
       async (ctx: restate.ObjectContext, input) => {
-        // B1: Load + validate
         const existing = await ctx.run("load", () => findAppointmentById(ctx.key), RETRY);
         if (!existing) {
           throw new restate.TerminalError(`Appointment ${ctx.key} does not exist`);
@@ -181,8 +174,9 @@ export const appointmentObject = restate.object({
         const now = await ctx.date.toJSON();
         const v = existing.version + 1;
 
-        // B2: Tạo state mới — version tăng, reminders reset về trạng thái trống
-        //     Spread ...input ghi đè các trường được cập nhật (customerName, startAt, etc.)
+        // Cancel 3 invocation cũ trên Restate (trước khi schedule mới)
+        await cancelScheduledReminders(ctx);
+
         const appointment: AppointmentStateType = {
           ...existing,
           ...input,
@@ -196,11 +190,9 @@ export const appointmentObject = restate.object({
           }],
         };
 
-        // B3: Schedule 3 reminder mới với version mới
-        //     Reminder cũ (version cũ) sẽ tự skip khi fire → không cần cancel
-        scheduleReminders(ctx, appointment);
+        // Schedule 3 invocation mới với version mới + lưu invocation IDs
+        await scheduleReminders(ctx, appointment);
 
-        // B4: Persist → Publish → Set state
         const saved = await ctx.run(
           "persist",
           () => replaceAppointmentRecord(appointment),
@@ -224,12 +216,10 @@ export const appointmentObject = restate.object({
     /* ═══════════════════════════════════════════════════════════════════════
      *  CANCEL — Huỷ lịch hẹn
      *
-     *  Flow: Load MongoDB → Validate → Tăng version → status="cancelled"
-     *        → Đánh dấu reminder đang chờ thành cancelled
-     *        → Lưu MongoDB → Publish Kafka → Set Restate K/V
+     *  Flow: Load → Validate → Cancel 3 invocation → status="cancelled"
+     *        → Persist → Publish → setState
      *
-     *  Idempotent: gọi cancel nhiều lần trên appointment đã cancel
-     *  → trả về bản cũ, không throw error.
+     *  Idempotent: gọi cancel nhiều lần → trả bản cũ, không error.
      * ═══════════════════════════════════════════════════════════════════════ */
     cancel: restate.createObjectHandler(
       { output: restate.serde.schema(AppointmentState) },
@@ -238,7 +228,6 @@ export const appointmentObject = restate.object({
         if (!existing) {
           throw new restate.TerminalError(`Appointment ${ctx.key} does not exist`);
         }
-        // Idempotent: đã cancel rồi → trả về luôn
         if (existing.status === "cancelled") {
           setState(ctx, existing);
           return existing;
@@ -247,7 +236,9 @@ export const appointmentObject = restate.object({
         const now = await ctx.date.toJSON();
         const v = existing.version + 1;
 
-        // Đánh dấu tất cả reminder đang scheduled (chưa sent) thành cancelled
+        // Cancel 3 invocation đang chờ trên Restate
+        await cancelScheduledReminders(ctx);
+
         const appointment: AppointmentStateType = {
           ...existing,
           version: v,
@@ -285,32 +276,24 @@ export const appointmentObject = restate.object({
     /* ═══════════════════════════════════════════════════════════════════════
      *  SEND REMINDER — Restate delayed call fire khi đến giờ nhắc
      *
-     *  Flow: Load MongoDB → Validate version + status + chưa gửi
-     *        → Đẩy job vào BullMQ (enqueueImmediateEmail)
-     *        → Cập nhật reminder status → Lưu MongoDB → Set Restate K/V
-     *
-     *  Được gọi tự động bởi Restate khi hết delay (trước/đúng/sau giờ hẹn).
-     *  Nếu appointment đã bị update (version khác) hoặc cancel → return sớm,
-     *  job không được tạo = reminder bị skip tự nhiên.
-     *
-     *  ctx.run wraps enqueueImmediateEmail → đảm bảo job chỉ được tạo 1 lần
-     *  ngay cả khi Restate replay handler.
+     *  Được gọi tự động bởi Restate khi hết delay.
+     *  Validate version + status → đẩy job vào BullMQ.
+     *  Guard clauses vẫn giữ làm safety net phòng race condition.
      * ═══════════════════════════════════════════════════════════════════════ */
     sendReminder: restate.createObjectHandler(
       { input: restate.serde.schema(SendReminderInput) },
       async (ctx: restate.ObjectContext, input: SendReminderInputType) => {
         const appointment = await ctx.run("load", () => findAppointmentById(ctx.key), RETRY);
 
-        // Guard clauses — bất kỳ điều kiện nào fail → return sớm, không tạo job
-        if (!appointment) return;                                    // appointment bị xóa
-        if (appointment.version !== input.version) return;           // appointment đã update → version mới
-        if (appointment.status === "cancelled") return;              // appointment đã huỷ
-        if (appointment.reminders[input.reminder].sent) return;      // email đã gửi rồi
+        // Guard clauses — safety net nếu cancel chưa kịp xử lý
+        if (!appointment) return;
+        if (appointment.version !== input.version) return;
+        if (appointment.status === "cancelled") return;
+        if (appointment.reminders[input.reminder].sent) return;
 
         const now = await ctx.date.toJSON();
 
-        // Đẩy job vào BullMQ — job ID deterministic (appointment+version+reminder)
-        // nên nếu Restate replay, BullMQ sẽ dedupe tự động
+        // Đẩy job vào BullMQ — deterministic jobId để dedupe khi replay
         const result = await ctx.run(
           `enqueue ${input.reminder} email`,
           () => enqueueImmediateEmail({
@@ -321,7 +304,6 @@ export const appointmentObject = restate.object({
           RETRY,
         );
 
-        // Cập nhật trạng thái reminder: đã queued vào BullMQ
         appointment.reminders[input.reminder] = {
           ...appointment.reminders[input.reminder],
           scheduled: true,
@@ -343,13 +325,8 @@ export const appointmentObject = restate.object({
     /* ═══════════════════════════════════════════════════════════════════════
      *  START REMINDER DELIVERY — BullMQ worker gọi TRƯỚC khi gửi email
      *
-     *  Flow: Load MongoDB → Validate (version, status, chưa gửi, đúng jobId)
-     *        → Nếu hợp lệ: cập nhật startedAt, trả shouldSend=true
-     *        → Nếu stale: trả shouldSend=false + reason
-     *
-     *  Đây là "cổng validation cuối cùng" trước khi email thật sự được gửi.
-     *  Ngăn gửi email cho appointment đã bị update/cancel giữa lúc
-     *  job nằm trong BullMQ queue chờ xử lý.
+     *  "Cổng validation cuối cùng" — ngăn gửi email cho appointment
+     *  đã bị update/cancel giữa lúc job nằm trong queue.
      * ═══════════════════════════════════════════════════════════════════════ */
     startReminderDelivery: restate.createObjectHandler(
       {
@@ -364,11 +341,9 @@ export const appointmentObject = restate.object({
 
         const now = await ctx.date.toJSON();
 
-        // Validate: version khớp? chưa cancel? chưa gửi? đúng jobId?
         const stale = validateReminder(appointment, input);
         if (stale) return { shouldSend: false, reason: stale };
 
-        // Đánh dấu reminder đang được xử lý (startedAt)
         appointment.reminders[input.reminder] = {
           ...appointment.reminders[input.reminder],
           scheduled: false, jobId: input.jobId, startedAt: now, error: undefined,
@@ -381,8 +356,6 @@ export const appointmentObject = restate.object({
 
         await ctx.run("persist delivery start", () => replaceAppointmentRecord(appointment), RETRY);
         setState(ctx, appointment);
-
-        // Worker nhận shouldSend=true → tiến hành gửi email
         return { shouldSend: true };
       },
     ),
@@ -390,13 +363,7 @@ export const appointmentObject = restate.object({
     /* ═══════════════════════════════════════════════════════════════════════
      *  RECORD REMINDER RESULT — BullMQ worker gọi SAU khi gửi email
      *
-     *  Flow: Load MongoDB → Validate → Cập nhật kết quả
-     *        → sent:    đánh dấu sent=true + publish Kafka event
-     *        → skipped: ghi reason (VD: email bounce, invalid address)
-     *        → failed:  ghi error message để debug
-     *
-     *  Đây là bước cuối trong vòng đời reminder:
-     *  schedule → queue → start → send email → record result
+     *  Bước cuối: schedule → queue → start → send email → record result
      * ═══════════════════════════════════════════════════════════════════════ */
     recordReminderResult: restate.createObjectHandler(
       {
@@ -411,21 +378,17 @@ export const appointmentObject = restate.object({
 
         const now = await ctx.date.toJSON();
 
-        // Nếu version/status không khớp → trả về state hiện tại, không cập nhật
         const stale = validateReminder(appointment, input);
         if (stale) return appointment;
 
         const r = appointment.reminders[input.reminder];
 
         if (input.result.status === "sent") {
-          // Email gửi thành công → đánh dấu sent=true
           appointment.reminders[input.reminder] = { ...r, sent: true, scheduled: false, jobId: input.jobId, sentAt: now, error: undefined };
           appointment.history.push({ type: "reminder_sent", at: now, version: appointment.version, reminder: input.reminder, jobId: input.jobId });
           appointment.updatedAt = now;
 
           await ctx.run("persist sent", () => replaceAppointmentRecord(appointment), RETRY);
-
-          // Publish event "reminder.sent" → analytics, telegram, SSE
           await ctx.run("publish reminder.sent", () => publishAppointmentEvent({
             eventId: `reminder.sent:${appointment.id}:${appointment.version}:${input.reminder}`,
             type: "reminder.sent",
@@ -436,7 +399,6 @@ export const appointmentObject = restate.object({
           }), RETRY);
 
         } else if (input.result.status === "skipped") {
-          // Email bị skip (VD: SendGrid trả lỗi nhẹ, email không hợp lệ)
           appointment.reminders[input.reminder] = { ...r, sent: false, scheduled: false, jobId: input.jobId, skippedAt: now, error: input.result.reason };
           appointment.history.push({ type: "reminder_skipped", at: now, version: appointment.version, reminder: input.reminder, jobId: input.jobId, details: { reason: input.result.reason, statusCode: input.result.statusCode, responseBody: input.result.responseBody } });
           appointment.updatedAt = now;
@@ -444,7 +406,6 @@ export const appointmentObject = restate.object({
           await ctx.run("persist skipped", () => replaceAppointmentRecord(appointment), RETRY);
 
         } else {
-          // Email gửi thất bại (VD: SendGrid timeout, network error)
           appointment.reminders[input.reminder] = { ...r, sent: false, scheduled: false, jobId: input.jobId, failedAt: now, error: input.result.error };
           appointment.history.push({ type: "reminder_failed", at: now, version: appointment.version, reminder: input.reminder, jobId: input.jobId, details: { error: input.result.error } });
           appointment.updatedAt = now;
@@ -460,27 +421,25 @@ export const appointmentObject = restate.object({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  SCHEDULE REMINDERS — Đặt 3 delayed call cho before/atTime/after
+ *  SCHEDULE REMINDERS — Đặt 3 delayed call + lưu invocation IDs
  *
- *  Tính thời gian target cho mỗi reminder dựa trên startAt:
- *    before  = startAt - REMINDER_BEFORE_MS
- *    atTime  = startAt
- *    after   = startAt + REMINDER_AFTER_MS
+ *  Với mỗi reminder (before/atTime/after):
+ *    1. Tính targetMs từ startAt
+ *    2. Nếu đã qua → skip
+ *    3. Chưa qua → ctx.objectSendClient().sendReminder() với delay
+ *    4. await invocationId → lưu vào Restate K/V (INVOCATIONS_KEY)
  *
- *  Nếu target đã qua (targetMs <= nowMs) → skip, ghi vào history.
- *  Nếu chưa qua → tạo Restate delayed call sendReminder với delay tương ứng.
- *
- *  Mỗi call mang version hiện tại → khi appointment bị update (version tăng),
- *  call cũ sẽ fire nhưng version mismatch → sendReminder return sớm.
+ *  Invocation IDs được lưu để update/cancel có thể ctx.cancel() chúng,
+ *  đảm bảo Restate chỉ giữ đúng 3 invocation active tại mọi thời điểm.
  * ═══════════════════════════════════════════════════════════════════════════ */
-function scheduleReminders(ctx: restate.ObjectContext, appointment: AppointmentStateType) {
+async function scheduleReminders(ctx: restate.ObjectContext, appointment: AppointmentStateType) {
   const nowMs = new Date(appointment.updatedAt).getTime();
+  const invocations: ReminderInvocations = { before: "", atTime: "", after: "" };
 
   for (const reminder of REMINDER_TYPES) {
     const targetMs = reminderTargetMs(reminder, appointment.startAt);
     const scheduledFor = new Date(targetMs).toISOString();
 
-    // Thời gian đã qua → skip reminder này
     if (targetMs <= nowMs) {
       appointment.reminders[reminder] = {
         ...appointment.reminders[reminder],
@@ -495,13 +454,16 @@ function scheduleReminders(ctx: restate.ObjectContext, appointment: AppointmentS
       continue;
     }
 
-    // Đặt delayed call — Restate sẽ tự gọi sendReminder sau (targetMs - nowMs) ms
-    ctx
+    // Đặt delayed call — lấy invocationId để có thể cancel sau
+    const call = ctx
       .objectSendClient<AppointmentObject>({ name: "Appointment" }, ctx.key)
       .sendReminder(
         { reminder, version: appointment.version, scheduledFor },
         restate.rpc.sendOpts({ delay: targetMs - nowMs }),
       );
+
+    const invocationId = await call.invocationId;
+    invocations[reminder] = invocationId;
 
     appointment.reminders[reminder] = {
       ...appointment.reminders[reminder],
@@ -511,19 +473,42 @@ function scheduleReminders(ctx: restate.ObjectContext, appointment: AppointmentS
     };
     appointment.history.push({
       type: "reminder_scheduled", at: appointment.updatedAt, version: appointment.version,
-      reminder, details: { scheduledFor },
+      reminder, details: { scheduledFor, invocationId },
     });
   }
+
+  // Lưu invocation IDs vào Restate K/V — update/cancel sẽ đọc để ctx.cancel()
+  ctx.set(INVOCATIONS_KEY, invocations);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  CANCEL SCHEDULED REMINDERS — Huỷ invocation cũ trước khi schedule mới
+ *
+ *  Đọc invocation IDs từ Restate K/V → ctx.cancel() từng cái
+ *  → Xóa key để không cancel lại lần nữa
+ *
+ *  Gọi bởi: update (trước scheduleReminders) và cancel
+ * ═══════════════════════════════════════════════════════════════════════════ */
+async function cancelScheduledReminders(ctx: restate.ObjectContext) {
+  const invocations = await ctx.get<ReminderInvocations>(INVOCATIONS_KEY);
+  if (!invocations) return;
+
+  for (const reminder of REMINDER_TYPES) {
+    const invocationId = invocations[reminder];
+    if (invocationId) {
+      ctx.cancel(restate.InvocationIdParser.fromString(invocationId));
+    }
+  }
+
+  ctx.clear(INVOCATIONS_KEY);
 }
 
 /* ─── Inline Helpers ────────────────────────────────────────────────────── */
 
-// Lưu tóm tắt vào Restate K/V — chỉ giữ 4 trường chính để query nhanh
 function setState(ctx: restate.ObjectContext, a: AppointmentStateType) {
   ctx.set(STATE_KEY, { id: a.id, version: a.version, status: a.status, updatedAt: a.updatedAt });
 }
 
-// Trích các trường chính để lưu vào event payload / history detail
 function snapshot(a: AppointmentStateType) {
   return {
     id: a.id, version: a.version, customerName: a.customerName, customerEmail: a.customerEmail,
@@ -532,7 +517,6 @@ function snapshot(a: AppointmentStateType) {
   };
 }
 
-// Trích thông tin tối thiểu cần thiết để gửi email
 function emailPayload(a: AppointmentStateType) {
   return {
     id: a.id, version: a.version, customerName: a.customerName,
@@ -540,13 +524,11 @@ function emailPayload(a: AppointmentStateType) {
   };
 }
 
-// Tạo reminder status trống cho version mới — before/atTime/after đều chưa gửi
 function freshReminders(version: number): AppointmentStateType["reminders"] {
   const empty = { version, sent: false, scheduled: false };
   return { before: { ...empty }, atTime: { ...empty }, after: { ...empty } };
 }
 
-// Đánh dấu các reminder đang scheduled (chưa sent) thành cancelled
 function cancelledReminders(existing: AppointmentStateType, version: number, now: string) {
   const result = { ...existing.reminders };
   for (const r of REMINDER_TYPES) {
@@ -557,7 +539,6 @@ function cancelledReminders(existing: AppointmentStateType, version: number, now
   return result;
 }
 
-// Tạo history entries cho mỗi reminder bị huỷ (dùng khi cancel appointment)
 function cancelledReminderHistory(existing: AppointmentStateType, version: number, now: string) {
   return REMINDER_TYPES
     .filter((r) => existing.reminders[r].scheduled && !existing.reminders[r].sent)
@@ -568,7 +549,6 @@ function cancelledReminderHistory(existing: AppointmentStateType, version: numbe
     }));
 }
 
-// Validate reminder còn hợp lệ không — trả string lý do nếu stale, undefined nếu OK
 function validateReminder(
   appointment: AppointmentStateType,
   input: { reminder: ReminderType; version: number; jobId: string },
