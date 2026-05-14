@@ -38,7 +38,7 @@ export async function publishAppointmentEvent(
 ) {
   const parsed = AppointmentEventEnvelope.parse(event);
 
-  // Register schema (hoặc lấy từ cache nếu đã register)
+  // Register schema theo subject <topic>-value để consumer/connector decode được message
   const schemaId = await getOrRegisterSchema(SUBJECT, appointmentEventSchema);
 
   // Encode payload theo Confluent wire format (magic byte + schema ID + JSON)

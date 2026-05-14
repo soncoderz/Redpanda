@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 /* ───────── Cấu hình ───────── */
 
 // Danh sách Docker container cần khởi động
-const DOCKER_SERVICES = ["redis", "redpanda-0", "redpanda-console", "restate", "kafka-connect"];
+const DOCKER_SERVICES = ["mongo", "redis", "redpanda-0", "redpanda-console", "restate", "kafka-connect"];
 
 // Các port cần chờ sẵn sàng trước khi chạy ứng dụng
 const INFRA_PORTS = [

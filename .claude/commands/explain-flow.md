@@ -20,7 +20,6 @@ Giải thích luồng chạy (data flow) của một feature trong hệ thống.
    - `services/messaging/kafka.service.ts` — Kafka consumer framework
    - `workers/email.worker.ts` — Email worker
    - `workers/telegram.consumer.ts` — Telegram consumer
-   - `workers/analytics.consumer.ts` — Analytics consumer
    - `models/appointment.repository.ts` — MongoDB repository
    - `config/env.ts` — Environment config (timing, queue settings)
 

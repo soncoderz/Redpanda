@@ -8,7 +8,7 @@ import {
 import { env } from "./env.js";
 import { logger } from "../utils/logger.js";
 
-///// Cấu hình SASL nếu có username/password — SCRAM-SHA-256 khớp với setup-acl.sh
+// Cấu hình SASL nếu có username/password — SCRAM-SHA-256 khớp với setup-acl.sh
 const sasl: SASLOptions | undefined =
   env.kafkaUsername && env.kafkaPassword
     ? {

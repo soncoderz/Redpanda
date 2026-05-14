@@ -4,23 +4,22 @@
     "connector.class": "com.mongodb.kafka.connect.MongoSinkConnector",
     "tasks.max": "1",
 
-    "topics": "appointment-events",
-    "connection.uri": "mongodb://mongo:27017",
+    "topics": "con",
+    "connection.uri": "mongodb://host.docker.internal:27017",
     "database": "Redpanda",
-    "collection": "event_logs",
+    "collection": "con",
 
     "key.converter": "org.apache.kafka.connect.storage.StringConverter",
     "value.converter": "io.confluent.connect.json.JsonSchemaConverter",
     "value.converter.schema.registry.url": "http://redpanda-0:8081",
 
-    "document.id.strategy": "com.mongodb.kafka.connect.sink.processor.id.strategy.ProvidedInValueStrategy",
+    "document.id.strategy": "com.mongodb.kafka.connect.sink.processor.id.strategy.PartialValueStrategy",
+    "document.id.strategy.partial.value.projection.type": "AllowList",
+    "document.id.strategy.partial.value.projection.list": "eventId",
     "document.id.strategy.overwrite.existing": false,
     "document.id.strategy.uuid.format": "string",
 
-    "transforms": "extractId,addProcessedAt",
-
-    "transforms.extractId.type": "org.apache.kafka.connect.transforms.ValueToKey",
-    "transforms.extractId.fields": "eventId",
+    "transforms": "addProcessedAt",
 
     "transforms.addProcessedAt.type": "org.apache.kafka.connect.transforms.InsertField$Value",
     "transforms.addProcessedAt.timestamp.field": "processedAt",
